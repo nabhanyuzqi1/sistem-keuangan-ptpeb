@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Keuangan Multi-Proyek - PT Permata Energi Borneo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .status-badge {
+            @apply px-2 py-1 text-xs rounded-full font-medium;
+        }
+        .status-ongoing { @apply bg-blue-100 text-blue-800; }
+        .status-retensi { @apply bg-yellow-100 text-yellow-800; }
+        .status-selesai { @apply bg-green-100 text-green-800; }
+        .status-akan-datang { @apply bg-gray-100 text-gray-800; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app">
+        <!-- Loading State -->
+        <div id="loading" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p class="mt-4 text-gray-600">Memuat aplikasi...</p>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <h1 class="text-xl font-bold text-gray-800">PT Permata Energi Borneo</h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button onclick="showProjects()" class="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
+                            Proyek
+                        </button>
+                        <button onclick="showReports()" class="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
+                            Laporan
+                        </button>
+                        <div id="authButton"></div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="mainContent" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Content will be dynamically loaded here -->
+        </main>
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modalContainer"></div>
+
+    <script>
+        // Firebase Configuration - Ganti dengan konfigurasi Firebase Anda
+        const firebaseConfig = {
+        apiKey: "AIzaSyBQs36a-e61a-rQew10M1hhjhfode5nJ50",
+        authDomain: "sistem-keuangan-ptpeb.firebaseapp.com",
+        projectId: "sistem-keuangan-ptpeb",
+        storageBucket: "sistem-keuangan-ptpeb.firebasestorage.app",
+        messagingSenderId: "700252927467",
+        appId: "1:700252927467:web:987037067942cc9397d5ae",
+        measurementId: "G-XR25JGC1NE"
+        };
+
+        // Gemini API Configuration - Ganti dengan API key Anda
+        const GEMINI_API_KEY = "AIzaSyCXl-bqMtYmp4AuKEdLz1yDl0mzVmVIJXk";
+        const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent";
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        // Global Variables
+        let currentUser = null;
+        let projects = [];
+        let transactions = [];
+        let charts = {};
+        let currentProjectId = null;
+
+        // Auth State Observer
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+            updateAuthButton();
+            
+            if (user) {
+                showDashboard();
+            } else {
+                showProjects();
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+        });
+
+        // Authentication Functions
+        function signIn() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(error => {
+                alert('Error saat login: ' + error.message);
+            });
+        }
+
+        function signOut() {
+            auth.signOut();
+        }
+
+        function updateAuthButton() {
+            const authButton = document.getElementById('authButton');
+            if (currentUser) {
+                authButton.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-600">${currentUser.displayName || currentUser.email}</span>
+                        <button onclick="signOut()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm">
+                            Keluar
+                        </button>
+                    </div>
+                `;
+            } else {
+                authButton.innerHTML = `
+                    <button onclick="signIn()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
+                        Login Admin
+                    </button>
+                `;
+            }
+        }
+
+        // Show Dashboard
+        async function showDashboard() {
+            if (!currentUser) {
+                showProjects();
+                return;
+            }
+
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div class="fade-in">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800">Dashboard Admin</h2>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <button onclick="showProjectModal()" class="bg-blue-600 hover:bg-blue-700 text-white p-6 rounded-lg text-center">
+                            <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Tambah Proyek Baru
+                        </button>
+                        <button onclick="showAITransactionModal()" class="bg-green-600 hover:bg-green-700 text-white p-6 rounded-lg text-center">
+                            <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            Input dengan AI (Screenshot)
+                        </button>
+                        <button onclick="showTransactionModal()" class="bg-purple-600 hover:bg-purple-700 text-white p-6 rounded-lg text-center">
+                            <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Input Manual
+                        </button>
+                    </div>
+
+                    <!-- Project Reminders -->
+                    <div id="projectReminders" class="mb-8"></div>
+
+                    <!-- Recent Projects -->
+                    <div id="recentProjects" class="mb-8"></div>
+
+                    <!-- Recent Transactions -->
+                    <div id="recentTransactions"></div>
+                </div>
+            `;
+
+            loadDashboardData();
+        }
+
+        // Load Dashboard Data
+        async function loadDashboardData() {
+            try {
+                // Load projects
+                const projectSnapshot = await db.collection('projects').orderBy('createdAt', 'desc').limit(5).get();
+                projects = [];
+                projectSnapshot.forEach(doc => {
+                    projects.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Load transactions
+                const transSnapshot = await db.collection('transactions').orderBy('date', 'desc').limit(10).get();
+                transactions = [];
+                transSnapshot.forEach(doc => {
+                    transactions.push({ id: doc.id, ...doc.data() });
+                });
+
+                displayProjectReminders();
+                displayRecentProjects();
+                displayRecentTransactions();
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        // Display Project Reminders
+        function displayProjectReminders() {
+            const container = document.getElementById('projectReminders');
+            const ongoingProjects = projects.filter(p => p.status === 'ongoing');
+            const upcomingDeadlines = ongoingProjects.filter(p => {
+                const endDate = new Date(p.endDate);
+                const today = new Date();
+                const daysUntilDeadline = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+                return daysUntilDeadline <= 30 && daysUntilDeadline > 0;
+            });
+
+            if (upcomingDeadlines.length === 0) return;
+
+            container.innerHTML = `
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold text-yellow-800 mb-2">⚠️ Deadline Proyek Mendekati</h3>
+                    ${upcomingDeadlines.map(p => {
+                        const endDate = new Date(p.endDate);
+                        const today = new Date();
+                        const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+                        return `
+                            <div class="mt-2">
+                                <p class="text-yellow-700">
+                                    <strong>${p.name}</strong> - ${p.partner}
+                                    <span class="text-red-600 font-bold ml-2">${daysLeft} hari lagi</span>
+                                </p>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        // Display Recent Projects
+        function displayRecentProjects() {
+            const container = document.getElementById('recentProjects');
+            container.innerHTML = `
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="text-lg font-semibold text-gray-800">Proyek Terbaru</h3>
+                        <button onclick="showProjects()" class="text-blue-600 hover:text-blue-800 text-sm">
+                            Lihat Semua →
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        ${projects.length === 0 ? '<p class="text-gray-500 text-center">Belum ada proyek</p>' : 
+                        projects.map(p => `
+                            <div class="mb-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer" onclick="showProjectDetail('${p.id}')">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="font-semibold text-gray-800">${p.name}</h4>
+                                        <p class="text-sm text-gray-600">${p.partner}</p>
+                                        <p class="text-sm text-gray-500 mt-1">Nilai: ${formatCurrency(p.value)}</p>
+                                    </div>
+                                    <span class="status-badge status-${p.status}">
+                                        ${getStatusLabel(p.status)}
+                                    </span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Display Recent Transactions
+        function displayRecentTransactions() {
+            const container = document.getElementById('recentTransactions');
+            container.innerHTML = `
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800">Transaksi Terbaru</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proyek</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keterangan</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nominal</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${transactions.length === 0 ? 
+                                '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Belum ada transaksi</td></tr>' :
+                                transactions.map(t => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">${new Date(t.date).toLocaleDateString('id-ID')}</td>
+                                        <td class="px-6 py-4 text-sm">${t.projectName || '-'}</td>
+                                        <td class="px-6 py-4 text-sm">${t.description}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm ${t.type === 'income' ? 'text-green-600' : 'text-red-600'} font-medium">
+                                            ${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Show Projects
+        async function showProjects() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div class="fade-in">
+                    <div class="mb-6 flex justify-between items-center">
+                        <h2 class="text-2xl font-bold text-gray-800">Daftar Proyek</h2>
+                        ${currentUser ? `
+                        <button onclick="showProjectModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                            + Tambah Proyek
+                        </button>` : ''}
+                    </div>
+                    <div id="projectsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div class="text-center py-8 text-gray-500">Memuat proyek...</div>
+                    </div>
+                </div>
+            `;
+
+            loadProjects();
+        }
+
+        // Load Projects
+        async function loadProjects() {
+            try {
+                const snapshot = await db.collection('projects').orderBy('createdAt', 'desc').get();
+                projects = [];
+                snapshot.forEach(doc => {
+                    projects.push({ id: doc.id, ...doc.data() });
+                });
+                displayProjects();
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        // Display Projects
+        function displayProjects() {
+            const container = document.getElementById('projectsList');
+            
+            if (projects.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">Belum ada proyek</div>';
+                return;
+            }
+
+            container.innerHTML = projects.map(project => {
+                const progress = calculateProjectProgress(project);
+                const daysLeft = calculateDaysLeft(project.endDate);
+                
+                return `
+                    <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer" 
+                         onclick="showProjectDetail('${project.id}')">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">${project.name}</h3>
+                                <span class="status-badge status-${project.status}">
+                                    ${getStatusLabel(project.status)}
+                                </span>
+                            </div>
+                            
+                            <p class="text-sm text-gray-600 mb-2">${project.partner}</p>
+                            <p class="text-sm text-gray-500 mb-4">
+                                ${new Date(project.startDate).toLocaleDateString('id-ID')} - 
+                                ${new Date(project.endDate).toLocaleDateString('id-ID')}
+                            </p>
+                            
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-sm">
+                                    <span>Nilai Proyek:</span>
+                                    <span class="font-semibold">${formatCurrency(project.value)}</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span>Pajak (${project.taxRate}%):</span>
+                                    <span>${formatCurrency(project.value * project.taxRate / 100)}</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span>Terbayar:</span>
+                                    <span class="text-green-600">${formatCurrency(project.paidAmount || 0)}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span>Progress</span>
+                                    <span>${progress}%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="bg-blue-600 h-2 rounded-full" style="width: ${progress}%"></div>
+                                </div>
+                            </div>
+                            
+                            ${daysLeft > 0 && project.status === 'ongoing' ? `
+                            <p class="text-xs text-gray-500 mt-2">Sisa ${daysLeft} hari</p>
+                            ` : ''}
+                            
+                            <div class="mt-4 flex justify-end space-x-2">
+                                <button onclick="event.stopPropagation(); copyProjectLink('${project.id}')" 
+                                    class="text-blue-600 hover:text-blue-800 text-sm">
+                                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m9.032 4.026a9.001 9.001 0 01-7.522 3.756v1.042c4.518-1.322 6.88-5.556 7.522-4.798z"></path>
+                                    </svg>
+                                    Salin Link
+                                </button>
+                                ${currentUser ? `
+                                <button onclick="event.stopPropagation(); showProjectModal(${JSON.stringify(project).replace(/"/g, '&quot;')})" 
+                                    class="text-gray-600 hover:text-gray-800 text-sm">
+                                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Show Project Detail
+        async function showProjectDetail(projectId) {
+            currentProjectId = projectId;
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div class="fade-in">
+                    <div class="mb-6">
+                        <button onclick="showProjects()" class="text-blue-600 hover:text-blue-800 mb-4">
+                            ← Kembali ke Daftar Proyek
+                        </button>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-800">${project.name}</h2>
+                                <p class="text-gray-600">${project.partner}</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="shareWhatsApp('${projectId}')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm">
+                                    <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                    </svg>
+                                    WhatsApp
+                                </button>
+                                <button onclick="generatePDF('${projectId}')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm">
+                                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Project Info -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-sm text-gray-600 mb-2">Informasi Proyek</h3>
+                            <p class="text-xs text-gray-500">Status: <span class="status-badge status-${project.status}">${getStatusLabel(project.status)}</span></p>
+                            <p class="text-xs text-gray-500 mt-2">Mulai: ${new Date(project.startDate).toLocaleDateString('id-ID')}</p>
+                            <p class="text-xs text-gray-500">Selesai: ${new Date(project.endDate).toLocaleDateString('id-ID')}</p>
+                            <p class="text-xs text-gray-500 mt-2">No. SPK/MOU: ${project.contractNumber || '-'}</p>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-sm text-gray-600 mb-2">Nilai & Pembayaran</h3>
+                            <p class="text-xs text-gray-500">Nilai: ${formatCurrency(project.value)}</p>
+                            <p class="text-xs text-gray-500">Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 100)}</p>
+                            <p class="text-xs text-gray-500">Total: ${formatCurrency(project.value * (1 + project.taxRate / 100))}</p>
+                            <p class="text-xs text-gray-500 mt-2">Terbayar: <span class="text-green-600 font-semibold">${formatCurrency(project.paidAmount || 0)}</span></p>
+                            <p class="text-xs text-gray-500">Sisa: <span class="text-red-600 font-semibold">${formatCurrency(project.value - (project.paidAmount || 0))}</span></p>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-sm text-gray-600 mb-2">Progress</h3>
+                            <div class="relative pt-1">
+                                <div class="flex mb-2 items-center justify-between">
+                                    <div>
+                                        <span class="text-xs font-semibold inline-block text-blue-600">
+                                            ${calculateProjectProgress(project)}%
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-gray-200">
+                                    <div style="width:${calculateProjectProgress(project)}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-600"></div>
+                                </div>
+                            </div>
+                            ${project.status === 'ongoing' ? `
+                            <p class="text-xs text-gray-500">Sisa waktu: ${calculateDaysLeft(project.endDate)} hari</p>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Add Transaction Button -->
+                    ${currentUser ? `
+                    <div class="mb-6 flex justify-end">
+                        <button onclick="showTransactionModal(null, '${projectId}')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
+                            + Tambah Transaksi
+                        </button>
+                    </div>
+                    ` : ''}
+
+                    <!-- Transactions -->
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800">Transaksi Proyek</h3>
+                        </div>
+                        <div id="projectTransactions" class="p-6">
+                            <p class="text-gray-500 text-center">Memuat transaksi...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadProjectTransactions(projectId);
+        }
+
+        // Project Modal
+        function showProjectModal(project = null) {
+            const isEdit = project !== null;
+            const modalContainer = document.getElementById('modalContainer');
+            
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto slide-in">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                            ${isEdit ? 'Edit' : 'Tambah'} Proyek
+                        </h3>
+                        <form onsubmit="saveProject(event, ${isEdit ? `'${project.id}'` : 'null'}); return false;">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Nama Proyek</label>
+                                    <input type="text" id="projectName" required
+                                        value="${isEdit ? project.name : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Mitra/Partner</label>
+                                    <input type="text" id="projectPartner" required
+                                        value="${isEdit ? project.partner : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">No. SPK/MOU</label>
+                                    <input type="text" id="projectContractNumber"
+                                        value="${isEdit ? (project.contractNumber || '') : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                    <select id="projectStatus" required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option value="akan-datang" ${isEdit && project.status === 'akan-datang' ? 'selected' : ''}>Akan Datang</option>
+                                        <option value="ongoing" ${isEdit && project.status === 'ongoing' ? 'selected' : ''}>On Going</option>
+                                        <option value="retensi" ${isEdit && project.status === 'retensi' ? 'selected' : ''}>Retensi</option>
+                                        <option value="selesai" ${isEdit && project.status === 'selesai' ? 'selected' : ''}>Selesai</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Nilai Proyek (Rp)</label>
+                                    <input type="number" id="projectValue" required min="0" step="1000"
+                                        value="${isEdit ? project.value : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Pajak (%)</label>
+                                    <select id="projectTaxRate" required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option value="0" ${isEdit && project.taxRate === 0 ? 'selected' : ''}>Tanpa Pajak (0%)</option>
+                                        <option value="11" ${isEdit && project.taxRate === 11 ? 'selected' : ''}>Dengan Pajak (11%)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal Mulai</label>
+                                    <input type="date" id="projectStartDate" required
+                                        value="${isEdit ? project.startDate : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal Selesai</label>
+                                    <input type="date" id="projectEndDate" required
+                                        value="${isEdit ? project.endDate : ''}"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Deskripsi</label>
+                                <textarea id="projectDescription" rows="3"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >${isEdit ? (project.description || '') : ''}</textarea>
+                            </div>
+                            
+                            <div class="flex justify-end space-x-3">
+                                <button type="button" onclick="closeModal()"
+                                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                    Batal
+                                </button>
+                                <button type="submit"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    ${isEdit ? 'Simpan Perubahan' : 'Simpan'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Save Project
+        async function saveProject(event, projectId) {
+            event.preventDefault();
+            
+            const projectData = {
+                name: document.getElementById('projectName').value,
+                partner: document.getElementById('projectPartner').value,
+                contractNumber: document.getElementById('projectContractNumber').value,
+                status: document.getElementById('projectStatus').value,
+                value: parseFloat(document.getElementById('projectValue').value),
+                taxRate: parseFloat(document.getElementById('projectTaxRate').value),
+                startDate: document.getElementById('projectStartDate').value,
+                endDate: document.getElementById('projectEndDate').value,
+                description: document.getElementById('projectDescription').value,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: currentUser.uid,
+                userEmail: currentUser.email
+            };
+            
+            try {
+                if (projectId) {
+                    await db.collection('projects').doc(projectId).update(projectData);
+                } else {
+                    projectData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    projectData.paidAmount = 0;
+                    await db.collection('projects').add(projectData);
+                }
+                
+                closeModal();
+                loadProjects();
+            } catch (error) {
+                alert('Error menyimpan proyek: ' + error.message);
+            }
+        }
+
+        // AI Transaction Modal
+        function showAITransactionModal() {
+            const modalContainer = document.getElementById('modalContainer');
+            
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-lg p-6 w-full max-w-2xl slide-in">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                            Input Transaksi dengan AI
+                        </h3>
+                        
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Upload Screenshot WhatsApp
+                            </label>
+                            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                                <div class="space-y-1 text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                    <div class="flex text-sm text-gray-600">
+                                        <label for="imageUpload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                            <span>Upload gambar</span>
+                                            <input id="imageUpload" name="imageUpload" type="file" accept="image/*" class="sr-only" onchange="processImage(event)">
+                                        </label>
+                                        <p class="pl-1">atau drag and drop</p>
+                                    </div>
+                                    <p class="text-xs text-gray-500">PNG, JPG, GIF hingga 10MB</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="aiProcessing" class="hidden">
+                            <div class="text-center py-4">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p class="mt-2 text-sm text-gray-600">AI sedang memproses gambar...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="aiResult" class="hidden">
+                            <h4 class="font-medium text-gray-800 mb-3">Hasil Analisis AI:</h4>
+                            <form onsubmit="saveAITransaction(event); return false;">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Proyek</label>
+                                        <select id="aiProjectId" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="">Pilih Proyek</option>
+                                            ${projects.map(p => `<option value="${p.id}">${p.name} - ${p.partner}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal</label>
+                                        <input type="datetime-local" id="aiTransactionDate" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Tipe Transaksi</label>
+                                        <select id="aiTransactionType" required onchange="updateAICategoryOptions()" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="income">Pemasukan</option>
+                                            <option value="expense">Pengeluaran</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Kategori</label>
+                                        <select id="aiTransactionCategory" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Nominal (Rp)</label>
+                                        <input type="number" id="aiTransactionAmount" required min="0" step="1000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-6">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Keterangan</label>
+                                    <textarea id="aiTransactionDescription" required rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Gambar Bukti</label>
+                                    <img id="aiImagePreview" class="max-h-40 rounded-lg" />
+                                </div>
+                                
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" onclick="closeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                        Batal
+                                    </button>
+                                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                        Simpan Transaksi
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 mt-4">
+                            <button onclick="closeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Process Image with AI
+        async function processImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Show processing state
+            document.getElementById('aiProcessing').classList.remove('hidden');
+            document.getElementById('aiResult').classList.add('hidden');
+
+            try {
+                // Convert image to base64
+                const base64 = await fileToBase64(file);
+                
+                // Upload image to Firebase Storage
+                const imageName = `transactions/${Date.now()}_${file.name}`;
+                const storageRef = storage.ref(imageName);
+                await storageRef.put(file);
+                const imageUrl = await storageRef.getDownloadURL();
+
+                // Call Gemini API
+                const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                {
+                                    text: `Analisis screenshot WhatsApp ini dan ekstrak informasi transaksi keuangan. 
+                                    Identifikasi:
+                                    1. Tanggal dan waktu transaksi
+                                    2. Nominal uang (dalam Rupiah)
+                                    3. Jenis transaksi (pemasukan/pengeluaran)
+                                    4. Kategori yang sesuai:
+                                       - Untuk pemasukan: Proyek, Pembayaran, Lainnya
+                                       - Untuk pengeluaran: Operasional, Material, Upah Karyawan/Tukang, Pengeluaran Lain
+                                    5. Deskripsi transaksi
+                                    
+                                    Format respons dalam JSON:
+                                    {
+                                        "date": "YYYY-MM-DDTHH:mm",
+                                        "amount": number,
+                                        "type": "income" atau "expense",
+                                        "category": "kategori yang sesuai",
+                                        "description": "deskripsi transaksi"
+                                    }`
+                                },
+                                {
+                                    inline_data: {
+                                        mime_type: file.type,
+                                        data: base64.split(',')[1]
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            topK: 1,
+                            topP: 1,
+                            maxOutputTokens: 2048,
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                // Parse AI response
+                if (data.candidates && data.candidates[0]) {
+                    const aiText = data.candidates[0].content.parts[0].text;
+                    const aiData = JSON.parse(aiText.match(/\{[\s\S]*\}/)[0]);
+                    
+                    // Populate form with AI results
+                    document.getElementById('aiTransactionDate').value = aiData.date || new Date().toISOString().slice(0, 16);
+                    document.getElementById('aiTransactionType').value = aiData.type || 'expense';
+                    updateAICategoryOptions();
+                    document.getElementById('aiTransactionCategory').value = aiData.category || '';
+                    document.getElementById('aiTransactionAmount').value = aiData.amount || '';
+                    document.getElementById('aiTransactionDescription').value = aiData.description || '';
+                    document.getElementById('aiImagePreview').src = imageUrl;
+                    document.getElementById('aiImagePreview').dataset.url = imageUrl;
+                    
+                    // Show results
+                    document.getElementById('aiProcessing').classList.add('hidden');
+                    document.getElementById('aiResult').classList.remove('hidden');
+                } else {
+                    throw new Error('AI tidak dapat memproses gambar');
+                }
+            } catch (error) {
+                console.error('Error processing image:', error);
+                alert('Error memproses gambar: ' + error.message);
+                document.getElementById('aiProcessing').classList.add('hidden');
+            }
+        }
+
+        // File to Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Update AI Category Options
+        function updateAICategoryOptions() {
+            const type = document.getElementById('aiTransactionType').value;
+            const categorySelect = document.getElementById('aiTransactionCategory');
+            
+            let options = '';
+            if (type === 'income') {
+                options = `
+                    <option value="Proyek">Proyek</option>
+                    <option value="Pembayaran">Pembayaran</option>
+                    <option value="Lainnya">Lainnya</option>
+                `;
+            } else {
+                options = `
+                    <option value="Operasional">Operasional</option>
+                    <option value="Material">Material</option>
+                    <option value="Upah Karyawan/Tukang">Upah Karyawan/Tukang</option>
+                    <option value="Pengeluaran Lain">Pengeluaran Lain</option>
+                `;
+            }
+            
+            categorySelect.innerHTML = options;
+        }
+
+        // Save AI Transaction
+        async function saveAITransaction(event) {
+            event.preventDefault();
+            
+            const projectId = document.getElementById('aiProjectId').value;
+            const project = projects.find(p => p.id === projectId);
+            
+            const transactionData = {
+                projectId: projectId,
+                projectName: project ? project.name : '',
+                date: document.getElementById('aiTransactionDate').value,
+                type: document.getElementById('aiTransactionType').value,
+                category: document.getElementById('aiTransactionCategory').value,
+                amount: parseFloat(document.getElementById('aiTransactionAmount').value),
+                description: document.getElementById('aiTransactionDescription').value,
+                imageUrl: document.getElementById('aiImagePreview').dataset.url,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                isAIProcessed: true
+            };
+            
+            try {
+                await db.collection('transactions').add(transactionData);
+                
+                // Update project paid amount if income
+                if (transactionData.type === 'income' && projectId) {
+                    const projectRef = db.collection('projects').doc(projectId);
+                    await projectRef.update({
+                        paidAmount: firebase.firestore.FieldValue.increment(transactionData.amount)
+                    });
+                }
+                
+                closeModal();
+                if (currentProjectId) {
+                    loadProjectTransactions(currentProjectId);
+                } else {
+                    loadDashboardData();
+                }
+            } catch (error) {
+                alert('Error menyimpan transaksi: ' + error.message);
+            }
+        }
+
+        // Transaction Modal
+        function showTransactionModal(transaction = null, projectId = null) {
+            const isEdit = transaction !== null;
+            const modalContainer = document.getElementById('modalContainer');
+            
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-lg p-6 w-full max-w-md slide-in">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                            ${isEdit ? 'Edit' : 'Tambah'} Transaksi Manual
+                        </h3>
+                        <form onsubmit="saveTransaction(event, ${isEdit ? `'${transaction.id}'` : 'null'}); return false;">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Proyek</label>
+                                <select id="transactionProjectId" required
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Pilih Proyek</option>
+                                    ${projects.map(p => `
+                                        <option value="${p.id}" ${(isEdit && transaction.projectId === p.id) || (!isEdit && projectId === p.id) ? 'selected' : ''}>
+                                            ${p.name} - ${p.partner}
+                                        </option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal</label>
+                                <input type="datetime-local" id="transactionDate" required
+                                    value="${isEdit ? transaction.date : new Date().toISOString().slice(0, 16)}"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Tipe Transaksi</label>
+                                <select id="transactionType" required onchange="updateCategoryOptions()"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="income" ${isEdit && transaction.type === 'income' ? 'selected' : ''}>Pemasukan</option>
+                                    <option value="expense" ${isEdit && transaction.type === 'expense' ? 'selected' : ''}>Pengeluaran</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Kategori</label>
+                                <select id="transactionCategory" required
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    ${isEdit ? `<option value="${transaction.category}">${transaction.category}</option>` : ''}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Nominal (Rp)</label>
+                                <input type="number" id="transactionAmount" required min="0" step="1000"
+                                    value="${isEdit ? transaction.amount : ''}"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Keterangan</label>
+                                <textarea id="transactionDescription" required rows="3"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >${isEdit ? transaction.description : ''}</textarea>
+                            </div>
+                            
+                            <div class="flex justify-end space-x-3">
+                                <button type="button" onclick="closeModal()"
+                                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                    Batal
+                                </button>
+                                <button type="submit"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    ${isEdit ? 'Simpan Perubahan' : 'Simpan'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            updateCategoryOptions();
+            if (isEdit) {
+                document.getElementById('transactionCategory').value = transaction.category;
+            }
+        }
+
+        // Update Category Options
+        function updateCategoryOptions() {
+            const type = document.getElementById('transactionType').value;
+            const categorySelect = document.getElementById('transactionCategory');
+            
+            let options = '';
+            if (type === 'income') {
+                options = `
+                    <option value="Proyek">Proyek</option>
+                    <option value="Pembayaran">Pembayaran</option>
+                    <option value="Lainnya">Lainnya</option>
+                `;
+            } else {
+                options = `
+                    <option value="Operasional">Operasional</option>
+                    <option value="Material">Material</option>
+                    <option value="Upah Karyawan/Tukang">Upah Karyawan/Tukang</option>
+                    <option value="Pengeluaran Lain">Pengeluaran Lain</option>
+                `;
+            }
+            
+            categorySelect.innerHTML = options;
+        }
+
+        // Save Transaction
+        async function saveTransaction(event, transactionId) {
+            event.preventDefault();
+            
+            const projectId = document.getElementById('transactionProjectId').value;
+            const project = projects.find(p => p.id === projectId);
+            const oldTransaction = transactionId ? transactions.find(t => t.id === transactionId) : null;
+            
+            const transactionData = {
+                projectId: projectId,
+                projectName: project ? project.name : '',
+                date: document.getElementById('transactionDate').value,
+                type: document.getElementById('transactionType').value,
+                category: document.getElementById('transactionCategory').value,
+                amount: parseFloat(document.getElementById('transactionAmount').value),
+                description: document.getElementById('transactionDescription').value,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: currentUser.uid,
+                userEmail: currentUser.email
+            };
+            
+            try {
+                if (transactionId) {
+                    await db.collection('transactions').doc(transactionId).update(transactionData);
+                    
+                    // Update project paid amount if changed
+                    if (oldTransaction && projectId) {
+                        const projectRef = db.collection('projects').doc(projectId);
+                        if (oldTransaction.type === 'income') {
+                            await projectRef.update({
+                                paidAmount: firebase.firestore.FieldValue.increment(-oldTransaction.amount)
+                            });
+                        }
+                        if (transactionData.type === 'income') {
+                            await projectRef.update({
+                                paidAmount: firebase.firestore.FieldValue.increment(transactionData.amount)
+                            });
+                        }
+                    }
+                } else {
+                    transactionData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    await db.collection('transactions').add(transactionData);
+                    
+                    // Update project paid amount if income
+                    if (transactionData.type === 'income' && projectId) {
+                        const projectRef = db.collection('projects').doc(projectId);
+                        await projectRef.update({
+                            paidAmount: firebase.firestore.FieldValue.increment(transactionData.amount)
+                        });
+                    }
+                }
+                
+                closeModal();
+                if (currentProjectId) {
+                    loadProjectTransactions(currentProjectId);
+                } else {
+                    loadDashboardData();
+                }
+            } catch (error) {
+                alert('Error menyimpan transaksi: ' + error.message);
+            }
+        }
+
+        // Load Project Transactions
+        async function loadProjectTransactions(projectId) {
+            try {
+                const snapshot = await db.collection('transactions')
+                    .where('projectId', '==', projectId)
+                    .orderBy('date', 'desc')
+                    .get();
+                
+                const projectTransactions = [];
+                snapshot.forEach(doc => {
+                    projectTransactions.push({ id: doc.id, ...doc.data() });
+                });
+                
+                displayProjectTransactions(projectTransactions);
+            } catch (error) {
+                console.error('Error loading project transactions:', error);
+            }
+        }
+
+        // Display Project Transactions
+        function displayProjectTransactions(transactions) {
+            const container = document.getElementById('projectTransactions');
+            
+            if (transactions.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center">Belum ada transaksi untuk proyek ini</p>';
+                return;
+            }
+            
+            const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            
+            container.innerHTML = `
+                <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <p class="text-sm text-green-600">Total Pemasukan</p>
+                        <p class="text-xl font-bold text-green-700">${formatCurrency(income)}</p>
+                    </div>
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <p class="text-sm text-red-600">Total Pengeluaran</p>
+                        <p class="text-xl font-bold text-red-700">${formatCurrency(expense)}</p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <p class="text-sm text-blue-600">Saldo</p>
+                        <p class="text-xl font-bold text-blue-700">${formatCurrency(income - expense)}</p>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keterangan</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nominal</th>
+                                ${currentUser ? '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${transactions.map(t => `
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        ${new Date(t.date).toLocaleString('id-ID')}
+                                        ${t.isAIProcessed ? '<span class="ml-1 text-xs text-purple-600">(AI)</span>' : ''}
+                                    </td>
+                                    <td class="px-6 py-4 text-sm">
+                                        ${t.description}
+                                        ${t.imageUrl ? `
+                                        <a href="${t.imageUrl}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs block mt-1">
+                                            Lihat Bukti
+                                        </a>` : ''}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">${t.category}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm ${t.type === 'income' ? 'text-green-600' : 'text-red-600'} font-medium">
+                                        ${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}
+                                    </td>
+                                    ${currentUser ? `
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <button onclick="showTransactionModal(${JSON.stringify(t).replace(/"/g, '&quot;')})" 
+                                            class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
+                                        <button onclick="deleteTransaction('${t.id}')" 
+                                            class="text-red-600 hover:text-red-900">Hapus</button>
+                                    </td>
+                                    ` : ''}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Delete Transaction
+        async function deleteTransaction(id) {
+            if (!confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) return;
+            
+            try {
+                const transaction = transactions.find(t => t.id === id);
+                await db.collection('transactions').doc(id).delete();
+                
+                // Update project paid amount if income
+                if (transaction && transaction.type === 'income' && transaction.projectId) {
+                    const projectRef = db.collection('projects').doc(transaction.projectId);
+                    await projectRef.update({
+                        paidAmount: firebase.firestore.FieldValue.increment(-transaction.amount)
+                    });
+                }
+                
+                if (currentProjectId) {
+                    loadProjectTransactions(currentProjectId);
+                } else {
+                    loadDashboardData();
+                }
+            } catch (error) {
+                alert('Error menghapus transaksi: ' + error.message);
+            }
+        }
+
+        // Show Reports
+        async function showReports() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div class="fade-in">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Laporan Keuangan Keseluruhan</h2>
+                    
+                    <div id="reportContent">
+                        <p class="text-gray-500 text-center">Memuat laporan...</p>
+                    </div>
+                </div>
+            `;
+            
+            loadAllReportData();
+        }
+
+        // Load All Report Data
+        async function loadAllReportData() {
+            try {
+                // Load all projects
+                const projectSnapshot = await db.collection('projects').get();
+                const allProjects = [];
+                projectSnapshot.forEach(doc => {
+                    allProjects.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load all transactions
+                const transSnapshot = await db.collection('transactions').get();
+                const allTransactions = [];
+                transSnapshot.forEach(doc => {
+                    allTransactions.push({ id: doc.id, ...doc.data() });
+                });
+                
+                displayFullReport(allProjects, allTransactions);
+            } catch (error) {
+                console.error('Error loading report data:', error);
+            }
+        }
+
+        // Display Full Report
+        function displayFullReport(projects, transactions) {
+            const totalProjectValue = projects.reduce((sum, p) => sum + p.value, 0);
+            const totalPaid = projects.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+            const totalTax = projects.reduce((sum, p) => sum + (p.value * p.taxRate / 100), 0);
+            
+            const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            const profit = totalIncome - totalExpense;
+            const margin = totalIncome > 0 ? (profit / totalIncome * 100).toFixed(2) : 0;
+            
+            const container = document.getElementById('reportContent');
+            container.innerHTML = `
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <p class="text-gray-600 text-sm">Total Nilai Proyek</p>
+                        <p class="text-2xl font-bold text-gray-800">${formatCurrency(totalProjectValue)}</p>
+                        <p class="text-xs text-gray-500 mt-1">Dari ${projects.length} proyek</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <p class="text-gray-600 text-sm">Total Terbayar</p>
+                        <p class="text-2xl font-bold text-green-600">${formatCurrency(totalPaid)}</p>
+                        <p class="text-xs text-gray-500 mt-1">${((totalPaid / totalProjectValue) * 100).toFixed(1)}% dari total</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <p class="text-gray-600 text-sm">Total Pengeluaran</p>
+                        <p class="text-2xl font-bold text-red-600">${formatCurrency(totalExpense)}</p>
+                        <p class="text-xs text-gray-500 mt-1">Dari ${transactions.filter(t => t.type === 'expense').length} transaksi</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <p class="text-gray-600 text-sm">Keuntungan</p>
+                        <p class="text-2xl font-bold text-blue-600">${formatCurrency(profit)}</p>
+                        <p class="text-xs text-gray-500 mt-1">Margin ${margin}%</p>
+                    </div>
+                </div>
+                
+                <!-- Project Status Overview -->
+                <div class="bg-white rounded-lg shadow mb-8">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800">Status Proyek</h3>
+                    </div>
+                    <div class="p-6">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            ${['akan-datang', 'ongoing', 'retensi', 'selesai'].map(status => {
+                                const count = projects.filter(p => p.status === status).length;
+                                const value = projects.filter(p => p.status === status).reduce((sum, p) => sum + p.value, 0);
+                                return `
+                                    <div class="text-center">
+                                        <span class="status-badge status-${status}">${getStatusLabel(status)}</span>
+                                        <p class="text-2xl font-bold mt-2">${count}</p>
+                                        <p class="text-xs text-gray-500">${formatCurrency(value)}</p>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Charts -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Distribusi Pengeluaran</h3>
+                        <canvas id="expenseCategoryChart"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Proyek per Mitra</h3>
+                        <canvas id="partnerChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Monthly Trend -->
+                <div class="bg-white p-6 rounded-lg shadow mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Tren Bulanan</h3>
+                    <canvas id="monthlyTrendChart"></canvas>
+                </div>
+                
+                <!-- Project List -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800">Daftar Proyek</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proyek</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mitra</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nilai</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Terbayar</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${projects.map(p => `
+                                    <tr class="hover:bg-gray-50 cursor-pointer" onclick="showProjectDetail('${p.id}')">
+                                        <td class="px-6 py-4 text-sm font-medium text-gray-900">${p.name}</td>
+                                        <td class="px-6 py-4 text-sm text-gray-500">${p.partner}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="status-badge status-${p.status}">${getStatusLabel(p.status)}</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">${formatCurrency(p.value)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">${formatCurrency(p.paidAmount || 0)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                                <div class="bg-blue-600 h-2 rounded-full" style="width: ${calculateProjectProgress(p)}%"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            createReportCharts(projects, transactions);
+        }
+
+        // Create Report Charts
+        function createReportCharts(projects, transactions) {
+            // Expense Category Chart
+            const expenseByCategory = {};
+            transactions.filter(t => t.type === 'expense').forEach(t => {
+                expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + t.amount;
+            });
+            
+            const ctx1 = document.getElementById('expenseCategoryChart').getContext('2d');
+            new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(expenseByCategory),
+                    datasets: [{
+                        data: Object.values(expenseByCategory),
+                        backgroundColor: ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+            
+            // Partner Chart
+            const projectsByPartner = {};
+            projects.forEach(p => {
+                projectsByPartner[p.partner] = (projectsByPartner[p.partner] || 0) + p.value;
+            });
+            
+            const ctx2 = document.getElementById('partnerChart').getContext('2d');
+            new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(projectsByPartner),
+                    datasets: [{
+                        label: 'Nilai Proyek',
+                        data: Object.values(projectsByPartner),
+                        backgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: value => 'Rp ' + value.toLocaleString('id-ID')
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Monthly Trend Chart
+            const monthlyData = {};
+            transactions.forEach(t => {
+                const month = new Date(t.date).toISOString().slice(0, 7);
+                if (!monthlyData[month]) monthlyData[month] = { income: 0, expense: 0 };
+                
+                if (t.type === 'income') {
+                    monthlyData[month].income += t.amount;
+                } else {
+                    monthlyData[month].expense += t.amount;
+                }
+            });
+            
+            const months = Object.keys(monthlyData).sort();
+            const ctx3 = document.getElementById('monthlyTrendChart').getContext('2d');
+            new Chart(ctx3, {
+                type: 'line',
+                data: {
+                    labels: months.map(m => {
+                        const date = new Date(m + '-01');
+                        return date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+                    }),
+                    datasets: [
+                        {
+                            label: 'Pemasukan',
+                            data: months.map(m => monthlyData[m].income),
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b98120',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Pengeluaran',
+                            data: months.map(m => monthlyData[m].expense),
+                            borderColor: '#ef4444',
+                            backgroundColor: '#ef444420',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: value => 'Rp ' + value.toLocaleString('id-ID')
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Utility Functions
+        function closeModal() {
+            document.getElementById('modalContainer').innerHTML = '';
+        }
+
+        function formatCurrency(amount) {
+            return 'Rp ' + amount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function getStatusLabel(status) {
+            const labels = {
+                'akan-datang': 'Akan Datang',
+                'ongoing': 'On Going',
+                'retensi': 'Retensi',
+                'selesai': 'Selesai'
+            };
+            return labels[status] || status;
+        }
+
+        function calculateProjectProgress(project) {
+            if (project.value === 0) return 0;
+            return Math.round(((project.paidAmount || 0) / project.value) * 100);
+        }
+
+        function calculateDaysLeft(endDate) {
+            const end = new Date(endDate);
+            const today = new Date();
+            const diff = end - today;
+            return Math.ceil(diff / (1000 * 60 * 60 * 24));
+        }
+
+        function copyProjectLink(projectId) {
+            const link = `${window.location.origin}${window.location.pathname}?project=${projectId}`;
+            navigator.clipboard.writeText(link).then(() => {
+                alert('Link proyek berhasil disalin!');
+            });
+        }
+
+        // WhatsApp Share
+        function shareWhatsApp(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            
+            const projectTransactions = transactions.filter(t => t.projectId === projectId);
+            const income = projectTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expense = projectTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            
+            const message = `
+*LAPORAN PROYEK*
+*${project.name}*
+Mitra: ${project.partner}
+
+📊 *Status:* ${getStatusLabel(project.status)}
+📅 *Periode:* ${new Date(project.startDate).toLocaleDateString('id-ID')} - ${new Date(project.endDate).toLocaleDateString('id-ID')}
+
+💰 *Keuangan:*
+• Nilai Proyek: ${formatCurrency(project.value)}
+• Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 100)}
+• Total Terbayar: ${formatCurrency(income)}
+• Total Pengeluaran: ${formatCurrency(expense)}
+• Saldo: ${formatCurrency(income - expense)}
+
+📈 *Progress:* ${calculateProjectProgress(project)}%
+
+Link Detail: ${window.location.origin}${window.location.pathname}?project=${projectId}
+            `.trim();
+            
+            const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+
+        // Generate PDF
+        async function generatePDF(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Header
+            doc.setFontSize(20);
+            doc.text('PT PERMATA ENERGI BORNEO', 105, 20, { align: 'center' });
+            doc.setFontSize(16);
+            doc.text('LAPORAN PROYEK', 105, 30, { align: 'center' });
+            
+            // Project Info
+            doc.setFontSize(12);
+            doc.text(`Nama Proyek: ${project.name}`, 20, 50);
+            doc.text(`Mitra: ${project.partner}`, 20, 60);
+            doc.text(`Status: ${getStatusLabel(project.status)}`, 20, 70);
+            doc.text(`Periode: ${new Date(project.startDate).toLocaleDateString('id-ID')} - ${new Date(project.endDate).toLocaleDateString('id-ID')}`, 20, 80);
+            
+            // Financial Summary
+            doc.text('RINGKASAN KEUANGAN', 20, 100);
+            doc.text(`Nilai Proyek: ${formatCurrency(project.value)}`, 20, 110);
+            doc.text(`Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 100)}`, 20, 120);
+            doc.text(`Total: ${formatCurrency(project.value * (1 + project.taxRate / 100))}`, 20, 130);
+            
+            const projectTransactions = transactions.filter(t => t.projectId === projectId);
+            const income = projectTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expense = projectTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            
+            doc.text(`Total Terbayar: ${formatCurrency(income)}`, 20, 140);
+            doc.text(`Total Pengeluaran: ${formatCurrency(expense)}`, 20, 150);
+            doc.text(`Saldo: ${formatCurrency(income - expense)}`, 20, 160);
+            
+            // Footer
+            doc.setFontSize(10);
+            doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 20, 280);
+            
+            // Save
+            doc.save(`Laporan_${project.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+        }
+
+        // Check URL for direct project link
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const projectId = urlParams.get('project');
+            if (projectId) {
+                setTimeout(() => {
+                    showProjectDetail(projectId);
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>
