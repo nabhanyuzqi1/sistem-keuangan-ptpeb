@@ -1,6 +1,5 @@
 // src/components/transactions/TransactionTable.jsx
 import React, { useState } from 'react';
-import { deleteTransaction } from '../../services/transactions';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { TRANSACTION_TYPES } from '../../utils/constants';
 
@@ -15,9 +14,9 @@ const TransactionTable = ({ transactions, onEdit, onDelete, showProject = true }
     setDeletingId(transaction.id);
     
     try {
-      await deleteTransaction(transaction.id, transaction);
+      // Call the onDelete function passed from parent
       if (onDelete) {
-        onDelete();
+        await onDelete(transaction);
       }
     } catch (error) {
       console.error('Error deleting transaction:', error);
@@ -57,7 +56,7 @@ const TransactionTable = ({ transactions, onEdit, onDelete, showProject = true }
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Nominal
             </th>
-            {onEdit && (
+            {(onEdit || onDelete) && (
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Aksi
               </th>
@@ -107,22 +106,28 @@ const TransactionTable = ({ transactions, onEdit, onDelete, showProject = true }
                   {formatCurrency(transaction.amount)}
                 </span>
               </td>
-              {onEdit && (
+              {(onEdit || onDelete) && (
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => onEdit(transaction)}
-                    className="text-blue-600 hover:text-blue-900 mr-3"
-                    disabled={deletingId === transaction.id}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(transaction)}
-                    className="text-red-600 hover:text-red-900"
-                    disabled={deletingId === transaction.id}
-                  >
-                    {deletingId === transaction.id ? 'Menghapus...' : 'Hapus'}
-                  </button>
+                  <div className="flex space-x-2">
+                    {onEdit && (
+                      <button
+                        onClick={() => onEdit(transaction)}
+                        className="text-blue-600 hover:text-blue-900"
+                        disabled={deletingId === transaction.id}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        onClick={() => handleDelete(transaction)}
+                        className="text-red-600 hover:text-red-900"
+                        disabled={deletingId === transaction.id}
+                      >
+                        {deletingId === transaction.id ? 'Menghapus...' : 'Hapus'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>

@@ -1,6 +1,6 @@
 // src/components/layout/Navigation.jsx
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { signOutUser } from '../../services/auth';
 import LoginModal from '../auth/LoginModal';
 
@@ -8,13 +8,16 @@ const Navigation = ({ currentUser, onUserLogin }) => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     try {
       await signOutUser();
-      window.location.href = '/';
+      // Navigate to projects page after logout
+      navigate('/projects');
     } catch (error) {
       console.error('Error signing out:', error);
+      alert('Gagal keluar dari sistem. Silakan coba lagi.');
     }
   };
 
@@ -22,14 +25,13 @@ const Navigation = ({ currentUser, onUserLogin }) => {
     return location.pathname === path;
   };
 
-  const navLinks = [
-    { path: '/projects', label: 'Proyek', adminOnly: false },
-    { path: '/reports', label: 'Laporan', adminOnly: false },
-  ];
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
 
-  if (currentUser && currentUser.role === 'admin') {
-    navLinks.unshift({ path: '/', label: 'Dashboard', adminOnly: true });
-  }
+  // Debug log
+  console.log('Navigation - Current User:', currentUser);
+  console.log('Navigation - Is Admin?', currentUser?.role === 'admin');
 
   return (
     <>
@@ -37,27 +39,44 @@ const Navigation = ({ currentUser, onUserLogin }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <Link to="/" className="flex items-center">
+              <Link to="/" className="flex items-center" onClick={closeMobileMenu}>
                 <h1 className="text-xl font-bold text-gray-800">PT Permata Energi Borneo</h1>
               </Link>
               
               {/* Desktop Navigation */}
               <div className="hidden md:flex ml-10 space-x-4">
-                {navLinks.map((link) => (
-                  (!link.adminOnly || (currentUser && currentUser.role === 'admin')) && (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        isActive(link.path)
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {link.label}
-                    </Link>
-                  )
-                ))}
+                {currentUser && currentUser.role === 'admin' && (
+                  <Link
+                    to="/"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive('/')
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Dashboard
+                  </Link>
+                )}
+                <Link
+                  to="/projects"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/projects')
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Proyek
+                </Link>
+                <Link
+                  to="/reports"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive('/reports')
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Laporan
+                </Link>
               </div>
             </div>
 
@@ -119,22 +138,41 @@ const Navigation = ({ currentUser, onUserLogin }) => {
         {/* Mobile menu */}
         <div className={`md:hidden ${mobileMenuOpen ? 'block' : 'hidden'}`}>
           <div className="px-2 pt-2 pb-3 space-y-1">
-            {navLinks.map((link) => (
-              (!link.adminOnly || (currentUser && currentUser.role === 'admin')) && (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`block px-3 py-2 rounded-md text-base font-medium ${
-                    isActive(link.path)
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
-                  }`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              )
-            ))}
+            {currentUser && currentUser.role === 'admin' && (
+              <Link
+                to="/"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  isActive('/')
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                }`}
+                onClick={closeMobileMenu}
+              >
+                Dashboard
+              </Link>
+            )}
+            <Link
+              to="/projects"
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                location.pathname.startsWith('/projects')
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+              }`}
+              onClick={closeMobileMenu}
+            >
+              Proyek
+            </Link>
+            <Link
+              to="/reports"
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                isActive('/reports')
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+              }`}
+              onClick={closeMobileMenu}
+            >
+              Laporan
+            </Link>
           </div>
           {currentUser && (
             <div className="border-t border-gray-200 px-4 py-3">
@@ -156,8 +194,11 @@ const Navigation = ({ currentUser, onUserLogin }) => {
         onClose={() => setShowLoginModal(false)}
         onSuccess={(user) => {
           onUserLogin(user);
+          setShowLoginModal(false);
           if (user.role === 'admin') {
-            window.location.href = '/';
+            navigate('/');
+          } else {
+            navigate('/projects');
           }
         }}
       />

@@ -14,6 +14,12 @@ const ProjectList = ({ currentUser }) => {
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Debug log
+  useEffect(() => {
+    console.log('ProjectList - Current User:', currentUser);
+    console.log('Is Admin?', currentUser?.role === 'admin');
+  }, [currentUser]);
+
   useEffect(() => {
     loadProjects();
   }, []);
@@ -35,6 +41,20 @@ const ProjectList = ({ currentUser }) => {
   const handleEditProject = (project) => {
     setEditingProject(project);
     setShowProjectModal(true);
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus proyek ini?')) {
+      return;
+    }
+    
+    try {
+      // Add delete logic here if needed
+      await loadProjects();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      alert('Gagal menghapus proyek');
+    }
   };
 
   const handleModalClose = () => {
@@ -82,6 +102,8 @@ const ProjectList = ({ currentUser }) => {
     'selesai': 'Selesai'
   };
 
+  const isAdmin = currentUser && currentUser.role === 'admin';
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -108,13 +130,24 @@ const ProjectList = ({ currentUser }) => {
     <div className="fade-in">
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-2xl font-bold text-gray-800">Daftar Proyek</h2>
-          {currentUser && currentUser.role === 'admin' && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Daftar Proyek</h2>
+            {isAdmin && (
+              <p className="text-sm text-gray-600 mt-1">Logged in as Admin: {currentUser.email}</p>
+            )}
+          </div>
+          {isAdmin && (
             <button
-              onClick={() => setShowProjectModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              onClick={() => {
+                setEditingProject(null);
+                setShowProjectModal(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors inline-flex items-center"
             >
-              + Tambah Proyek
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Tambah Proyek
             </button>
           )}
         </div>
@@ -177,7 +210,7 @@ const ProjectList = ({ currentUser }) => {
               ? 'Tidak ada proyek yang sesuai dengan filter'
               : 'Belum ada proyek'}
           </p>
-          {currentUser && currentUser.role === 'admin' && !searchTerm && filter === 'all' && (
+          {isAdmin && !searchTerm && filter === 'all' && (
             <button
               onClick={() => setShowProjectModal(true)}
               className="mt-4 text-blue-600 hover:text-blue-800 underline"
@@ -192,7 +225,8 @@ const ProjectList = ({ currentUser }) => {
             <ProjectCard
               key={project.id}
               project={project}
-              onEdit={currentUser?.role === 'admin' ? handleEditProject : null}
+              onEdit={isAdmin ? handleEditProject : null}
+              onDelete={isAdmin ? handleDeleteProject : null}
               currentUser={currentUser}
             />
           ))}
@@ -200,7 +234,7 @@ const ProjectList = ({ currentUser }) => {
       )}
 
       {/* Project Modal */}
-      {showProjectModal && (
+      {showProjectModal && isAdmin && (
         <ProjectModal
           isOpen={showProjectModal}
           onClose={handleModalClose}

@@ -16,12 +16,27 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChange((user) => {
+      console.log('User state in App:', user); // Debug log
       setCurrentUser(user);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Debug info component
+  const DebugInfo = () => {
+    if (process.env.NODE_ENV === 'development') {
+      return (
+        <div className="fixed bottom-4 right-4 bg-gray-800 text-white p-2 rounded text-xs max-w-xs">
+          <div>User: {currentUser?.email || 'Not logged in'}</div>
+          <div>Role: {currentUser?.role || 'N/A'}</div>
+          <div>UID: {currentUser?.uid || 'N/A'}</div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   if (loading) {
     return (
@@ -53,7 +68,7 @@ function App() {
               }
             />
             
-            {/* Projects - Public */}
+            {/* Projects Routes */}
             <Route path="/projects" element={<ProjectList currentUser={currentUser} />} />
             <Route path="/projects/:id" element={<ProjectDetail currentUser={currentUser} />} />
             
@@ -64,6 +79,8 @@ function App() {
             <Route path="*" element={<Navigate to={currentUser?.role === 'admin' ? '/' : '/projects'} replace />} />
           </Routes>
         </main>
+        
+        <DebugInfo />
       </div>
     </Router>
   );

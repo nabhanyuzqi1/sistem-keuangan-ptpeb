@@ -3,9 +3,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { formatCurrency, calculateProjectProgress, calculateDaysLeft, getStatusLabel } from '../../utils/formatters';
 
-const ProjectCard = ({ project, onEdit, currentUser }) => {
+const ProjectCard = ({ project, onEdit, onDelete, currentUser }) => {
   const progress = calculateProjectProgress(project);
   const daysLeft = calculateDaysLeft(project.endDate);
+  const isAdmin = currentUser && currentUser.role === 'admin';
 
   const copyProjectLink = (e, projectId) => {
     e.stopPropagation();
@@ -23,6 +24,14 @@ const ProjectCard = ({ project, onEdit, currentUser }) => {
     e.preventDefault();
     if (onEdit) {
       onEdit(project);
+    }
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (onDelete) {
+      onDelete(project.id);
     }
   };
 
@@ -70,28 +79,47 @@ const ProjectCard = ({ project, onEdit, currentUser }) => {
               {daysLeft > 0 && project.status === 'ongoing' && (
                 <p className="text-xs text-gray-500 mt-1">Sisa {daysLeft} hari</p>
               )}
+              {daysLeft === 0 && project.status === 'ongoing' && (
+                <p className="text-xs text-red-600 mt-1 font-semibold">Deadline hari ini!</p>
+              )}
+              {daysLeft < 0 && project.status === 'ongoing' && (
+                <p className="text-xs text-red-600 mt-1 font-semibold">Terlambat {Math.abs(daysLeft)} hari</p>
+              )}
             </div>
             
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-between items-center">
               <button
                 onClick={(e) => copyProjectLink(e, project.id)}
-                className="text-blue-600 hover:text-blue-800 text-sm p-1"
+                className="text-blue-600 hover:text-blue-800 text-sm p-1 inline-flex items-center"
                 title="Salin link proyek"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m9.032 4.026a9.001 9.001 0 01-7.522 3.756v1.042c4.518-1.322 6.88-5.556 7.522-4.798z" />
                 </svg>
+                Salin Link
               </button>
-              {currentUser && currentUser.role === 'admin' && (
-                <button
-                  onClick={handleEdit}
-                  className="text-gray-600 hover:text-gray-800 text-sm p-1"
-                  title="Edit proyek"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
+              
+              {isAdmin && (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleEdit}
+                    className="text-gray-600 hover:text-gray-800 text-sm p-1"
+                    title="Edit proyek"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="text-red-600 hover:text-red-800 text-sm p-1"
+                    title="Hapus proyek"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               )}
             </div>
           </div>
