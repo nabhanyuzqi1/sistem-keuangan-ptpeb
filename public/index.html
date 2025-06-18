@@ -1,110 +1,131 @@
 <!DOCTYPE html>
 <html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Keuangan Multi-Proyek - PT Permata Energi Borneo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta
+      name="description"
+      content="Sistem Keuangan Multi-Proyek PT Permata Energi Borneo - Kelola proyek dan keuangan dengan mudah"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="%PUBLIC_URL%/">
+    <meta property="og:title" content="PT Permata Energi Borneo - Sistem Keuangan">
+    <meta property="og:description" content="Kelola proyek dan keuangan perusahaan dengan sistem terintegrasi">
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="%PUBLIC_URL%/">
+    <meta property="twitter:title" content="PT Permata Energi Borneo - Sistem Keuangan">
+    <meta property="twitter:description" content="Kelola proyek dan keuangan perusahaan dengan sistem terintegrasi">
+    <meta property="twitter:image" content="%PUBLIC_URL%/og-image.png">
+    
+    <title>Sistem Keuangan - PT Permata Energi Borneo</title>
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Google Fonts (optional) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        .fade-in { animation: fadeIn 0.3s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .slide-in { animation: slideIn 0.3s ease-out; }
-        @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .status-badge {
-            @apply px-2 py-1 text-xs rounded-full font-medium;
-        }
-        .status-ongoing { @apply bg-blue-100 text-blue-800; }
-        .status-retensi { @apply bg-yellow-100 text-yellow-800; }
-        .status-selesai { @apply bg-green-100 text-green-800; }
-        .status-akan-datang { @apply bg-gray-100 text-gray-800; }
-        
-        /* Custom alert styles */
-        .custom-alert-overlay {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            padding: 1rem;
-        }
-        .custom-alert-box {
-            background: white;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-        }
-        .custom-alert-box p {
-            margin-bottom: 1rem;
-            color: #4b5563;
-        }
-        .custom-alert-box button {
-            background-color: #3b82f6;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.375rem;
-            border: none;
-            cursor: pointer;
-        }
-        .custom-alert-box.error {
-            border-top: 4px solid #ef4444;
-        }
-        .custom-alert-box.success {
-            border-top: 4px solid #22c55e;
-        }
+      /* Loading screen styles */
+      #root {
+        min-height: 100vh;
+      }
+      
+      .initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      
+      .loader-content {
+        text-align: center;
+      }
+      
+      .loader-spinner {
+        width: 48px;
+        height: 48px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      .loader-text {
+        color: #6b7280;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        font-size: 14px;
+      }
+      
+      /* Prevent FOUC */
+      body {
+        margin: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f9fafb;
+      }
+      
+      code {
+        font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+      }
     </style>
-</head>
-<body class="bg-gray-50">
-    <div id="app">
-        <!-- Loading State -->
-        <div id="loading" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
-            <div class="text-center">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                <p class="mt-4 text-gray-600">Memuat aplikasi...</p>
-            </div>
+  </head>
+  <body>
+    <noscript>
+      <div style="padding: 20px; text-align: center;">
+        <h1>JavaScript Diperlukan</h1>
+        <p>Anda perlu mengaktifkan JavaScript untuk menjalankan aplikasi ini.</p>
+      </div>
+    </noscript>
+    
+    <div id="root">
+      <!-- Initial loading screen while React loads -->
+      <div class="initial-loader" id="initial-loader">
+        <div class="loader-content">
+          <div class="loader-spinner"></div>
+          <p class="loader-text">Memuat aplikasi...</p>
         </div>
-
-        <!-- Navigation -->
-        <nav class="bg-white shadow-lg sticky top-0 z-40">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex items-center">
-                        <h1 class="text-xl font-bold text-gray-800">PT Permata Energi Borneo</h1>
-                    </div>
-                    <div id="nav-links" class="flex items-center space-x-4">
-                        <!-- Nav links will be injected by the view -->
-                    </div>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main id="mainContent" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <!-- Content will be dynamically loaded here -->
-        </main>
+      </div>
     </div>
-
-    <!-- Modal Container -->
-    <div id="modalContainer"></div>
-    <!-- Alert Container -->
-    <div id="alertContainer"></div>
-
-    <!-- Import the separated JS files -->
-    <script src="model.js"></script>
-    <script src="view.js"></script>
-    <script src="controller.js"></script>
-
-</body>
+    
+    <script>
+      // Remove initial loader once React takes over
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          const loader = document.getElementById('initial-loader');
+          if (loader) {
+            loader.style.transition = 'opacity 0.3s';
+            loader.style.opacity = '0';
+            setTimeout(function() {
+              loader.remove();
+            }, 300);
+          }
+        }, 100);
+      });
+    </script>
+  </body>
 </html>
