@@ -3,25 +3,54 @@ import React, { useState, useEffect } from 'react';
 import { addProject, updateProject } from '../../services/projects';
 import { PROJECT_STATUS, TAX_RATES } from '../../utils/constants';
 
+// Helper functions
+const formatNumberDisplay = (value) => {
+  if (!value && value !== 0) return '';
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const formatDateForInput = (date) => {
+  if (!date) return '';
+  
+  // Handle string dates
+  if (typeof date === 'string') {
+    // If already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return date;
+    }
+    // If in ISO format, extract date part
+    if (date.includes('T')) {
+      return date.split('T')[0];
+    }
+    // If in DD/MM/YYYY format, convert to YYYY-MM-DD
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+      const [day, month, year] = date.split('/');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+  
+  // Handle Date objects or timestamps
+  try {
+    const dateObj = new Date(date);
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.toISOString().split('T')[0];
+    }
+  } catch (e) {
+    console.error('Error parsing date:', e);
+  }
+  
+  return '';
+};
+
 const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
   const isEdit = project !== null && project !== undefined;
   
-  // Helper function to format date for input fields
-  const formatDateForInput = (date) => {
-    if (!date) return '';
-    if (typeof date === 'string' && !date.includes('T')) {
-      return date; // Already in YYYY-MM-DD format
-    }
-    const dateObj = new Date(date);
-    return dateObj.toISOString().split('T')[0];
-  };
-
   const [formData, setFormData] = useState({
     name: project?.name || '',
     partner: project?.partner || '',
     contractNumber: project?.contractNumber || '',
     status: project?.status || PROJECT_STATUS.AKAN_DATANG,
-    value: project?.value || '',
+    value: project?.value ? project.value.toString() : '',
     taxRate: project?.taxRate !== undefined ? project.taxRate : 11,
     startDate: formatDateForInput(project?.startDate) || '',
     endDate: formatDateForInput(project?.endDate) || '',
@@ -30,21 +59,26 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
   
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [displayValue, setDisplayValue] = useState(() => {
+    return formatNumberDisplay(project?.value || '');
+  });
 
   // Update form when project prop changes
   useEffect(() => {
     if (isOpen) {
+      const initialValue = project?.value ? project.value.toString() : '';
       setFormData({
         name: project?.name || '',
         partner: project?.partner || '',
         contractNumber: project?.contractNumber || '',
         status: project?.status || PROJECT_STATUS.AKAN_DATANG,
-        value: project?.value || '',
+        value: initialValue,
         taxRate: project?.taxRate !== undefined ? project.taxRate : 11,
         startDate: formatDateForInput(project?.startDate) || '',
         endDate: formatDateForInput(project?.endDate) || '',
         description: project?.description || ''
       });
+      setDisplayValue(formatNumberDisplay(initialValue));
       setErrors({});
     }
   }, [isOpen, project]);
@@ -60,7 +94,8 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
       newErrors.partner = 'Mitra/Partner harus diisi';
     }
     
-    if (!formData.value || formData.value <= 0) {
+    const numericValue = parseInt(formData.value, 10) || 0;
+    if (!formData.value || formData.value === '' || numericValue <= 0) {
       newErrors.value = 'Nilai proyek harus lebih dari 0';
     }
     
@@ -83,29 +118,50 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    console.log('Form data before validation:', formData); // Debug log
+    
     if (!validateForm()) {
+      console.log('Validation failed:', errors); // Debug log
       return;
     }
     
     setLoading(true);
     
     try {
-      const projectData = {
-        ...formData,
-        value: parseFloat(formData.value),
-        taxRate: parseFloat(formData.taxRate)
+      // Parse and ensure valid numeric values
+      const numericValue = parseInt(formData.value, 10) || 0;
+      const numericTaxRate = parseFloat(formData.taxRate) || 0;
+      
+      // Validate numeric values
+      if (numericValue <= 0) {
+        throw new Error('Nilai proyek harus lebih dari 0');
+      }
+      
+      // Clean and validate all data
+      const cleanedFormData = {
+        name: formData.name.trim(),
+        partner: formData.partner.trim(),
+        contractNumber: formData.contractNumber.trim(),
+        status: formData.status,
+        value: numericValue,
+        taxRate: numericTaxRate,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        description: formData.description.trim()
       };
       
+      console.log('Submitting project data:', cleanedFormData); // Debug log
+      
       if (isEdit) {
-        await updateProject(project.id, projectData, currentUser.uid, currentUser.email);
+        await updateProject(project.id, cleanedFormData, currentUser.uid, currentUser.email);
       } else {
-        await addProject(projectData, currentUser.uid, currentUser.email);
+        await addProject(cleanedFormData, currentUser.uid, currentUser.email);
       }
       
       onSuccess();
     } catch (error) {
       console.error('Error saving project:', error);
-      alert('Gagal menyimpan proyek. Silakan coba lagi.');
+      alert(`Gagal menyimpan proyek: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -127,20 +183,30 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
     }
   };
 
-  // Format number with thousand separators for display
-  const formatNumberDisplay = (value) => {
-    if (!value) return '';
-    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  };
-
   // Handle value input with better formatting
   const handleValueChange = (e) => {
-    const rawValue = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    const inputValue = e.target.value;
+    
+    // Allow empty input
+    if (inputValue === '') {
+      setFormData(prev => ({ ...prev, value: '' }));
+      setDisplayValue('');
+      return;
+    }
+    
+    // Remove all non-digits
+    const numericValue = inputValue.replace(/\D/g, '');
+    
+    // Update the numeric value in formData
     setFormData(prev => ({
       ...prev,
-      value: rawValue
+      value: numericValue
     }));
     
+    // Update display with formatting
+    setDisplayValue(formatNumberDisplay(numericValue));
+    
+    // Clear error if exists
     if (errors.value) {
       setErrors(prev => ({
         ...prev,
@@ -244,9 +310,8 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
               <input
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
                 name="value"
-                value={formatNumberDisplay(formData.value)}
+                value={displayValue}
                 onChange={handleValueChange}
                 placeholder="0"
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${

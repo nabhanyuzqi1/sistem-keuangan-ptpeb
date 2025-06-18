@@ -36,11 +36,13 @@ export const EXPENSE_CATEGORIES = [
   'Pengeluaran Lain'
 ];
 
+
 export const TAX_RATES = [
   { value: 0, label: 'Tanpa Pajak (0%)' },
-  { value: 11, label: 'Dengan Pajak (11%)' }
+  { value: 11, label: 'PPN (11%)' },
+  { value: 1.5, label: 'PPh 23 (1.5%)' },
+  
 ];
-
 export const CHART_COLORS = {
   primary: '#3b82f6',
   success: '#10b981',

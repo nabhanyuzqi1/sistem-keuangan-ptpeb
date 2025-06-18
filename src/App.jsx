@@ -24,7 +24,6 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Debug info component
   const DebugInfo = () => {
     if (process.env.NODE_ENV === 'development') {
       return (
@@ -34,7 +33,7 @@ function App() {
           <div>UID: {currentUser?.uid || 'N/A'}</div>
         </div>
       );
-    }
+    } 
     return null;
   };
 

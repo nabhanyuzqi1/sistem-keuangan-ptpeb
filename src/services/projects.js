@@ -21,9 +21,11 @@ const PROJECTS_COLLECTION = 'projects';
 /**
  * Add a new project
  * @param {Object} projectData - Project data object
+ * @param {string} userId - User ID (optional)
+ * @param {string} userEmail - User email (optional)
  * @returns {Promise<string>} - Document ID of created project
  */
-export const addProject = async (projectData) => {
+export const addProject = async (projectData, userId = null, userEmail = null) => {
   try {
     console.log('Adding project:', projectData);
     
@@ -40,7 +42,10 @@ export const addProject = async (projectData) => {
       paidAmount: Number(projectData.paidAmount) || 0,
       status: projectData.status || 'akan-datang',
       createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now()
+      updatedAt: Timestamp.now(),
+      // Add user info if provided
+      ...(userId && { createdBy: userId }),
+      ...(userEmail && { createdByEmail: userEmail })
     };
     
     // Add to Firestore
@@ -58,18 +63,23 @@ export const addProject = async (projectData) => {
  * Update an existing project
  * @param {string} projectId - Project document ID
  * @param {Object} updates - Fields to update
+ * @param {string} userId - User ID (optional)
+ * @param {string} userEmail - User email (optional)
  * @returns {Promise<void>}
  */
-export const updateProject = async (projectId, updates) => {
+export const updateProject = async (projectId, updates, userId = null, userEmail = null) => {
   try {
     console.log('Updating project:', projectId, updates);
     
     const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
     
-    // Add updated timestamp
+    // Add updated timestamp and user info
     const dataToUpdate = {
       ...updates,
-      updatedAt: Timestamp.now()
+      updatedAt: Timestamp.now(),
+      // Add user info if provided
+      ...(userId && { updatedBy: userId }),
+      ...(userEmail && { updatedByEmail: userEmail })
     };
     
     // Ensure numeric fields are numbers
@@ -162,7 +172,7 @@ export const getAllProjects = async () => {
  * @param {string} projectId - Project document ID
  * @returns {Promise<Object>} - Project object
  */
-export const getProjectById = async (projectId) => {
+export const getProject = async (projectId) => {
   try {
     const docRef = doc(db, PROJECTS_COLLECTION, projectId);
     const docSnap = await getDoc(docRef);
@@ -180,6 +190,9 @@ export const getProjectById = async (projectId) => {
     throw new Error(`Failed to retrieve project: ${error.message}`);
   }
 };
+
+// Alias for backward compatibility
+export const getProjectById = getProject;
 
 /**
  * Get projects by status
@@ -260,7 +273,7 @@ export const calculateProjectStats = (projects) => {
  */
 export const updateProjectStatus = async (projectId) => {
   try {
-    const project = await getProjectById(projectId);
+    const project = await getProject(projectId);
     const today = new Date();
     const startDate = new Date(project.startDate);
     const endDate = new Date(project.endDate);
@@ -292,7 +305,7 @@ export const updateProjectStatus = async (projectId) => {
  * @param {number} days - Number of days to look ahead
  * @returns {Promise<Array>} - Array of projects nearing deadline
  */
-export const getUpcomingDeadlines = async (days = 7) => {
+export const getProjectsWithUpcomingDeadlines = async (days = 7) => {
   try {
     const today = new Date();
     const futureDate = new Date();
@@ -316,15 +329,20 @@ export const getUpcomingDeadlines = async (days = 7) => {
   }
 };
 
+// Alias for backward compatibility
+export const getUpcomingDeadlines = getProjectsWithUpcomingDeadlines;
+
 // Export all functions
 export default {
   addProject,
   updateProject,
   deleteProject,
   getAllProjects,
+  getProject,
   getProjectById,
   getProjectsByStatus,
   calculateProjectStats,
   updateProjectStatus,
+  getProjectsWithUpcomingDeadlines,
   getUpcomingDeadlines
 };
