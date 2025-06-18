@@ -1,7 +1,7 @@
 // src/utils/pdfGenerator.js
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatCurrency, formatDate, getStatusLabel, calculateProjectProgress } from './formatters';
+import { formatCurrency, formatDate, getStatusLabel, calculateProjectProgress, calculateDaysLeft } from './formatters';
 
 // Company information
 const COMPANY_INFO = {
@@ -11,7 +11,6 @@ const COMPANY_INFO = {
   phone: '08115188808',
   email: 'permataenergiborneo@gmail.com'
 };
-
 
 
 // Helper function to format date shorter for tables
@@ -28,6 +27,7 @@ const formatDateShort = (date) => {
     year: 'numeric'
   });
 };
+
 
 // Helper function to add header
 const addHeader = (doc, title, isNewPage = false) => {
@@ -125,29 +125,98 @@ export const generateProjectPDF = (project, transactions = []) => {
   const doc = new jsPDF();
   let yPos = addHeader(doc, 'LAPORAN PROYEK');
   
-  // Project Information Section
-  doc.setFontSize(14);
+  // Project Title - Centered
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text(project.name, 20, yPos);
-  yPos += 8;
+  doc.text(project.name.toUpperCase(), 105, yPos, { align: 'center' });
+  yPos += 10;
   
-  doc.setFontSize(11);
+  // Partner name - Centered
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Mitra: ${project.partner}`, 20, yPos);
-  yPos += 6;
-  doc.text(`Status: ${getStatusLabel(project.status)}`, 20, yPos);
-  yPos += 6;
-  doc.text(`No. SPK/MOU: ${project.contractNumber || '-'}`, 20, yPos);
-  yPos += 6;
-  doc.text(`Periode: ${formatDateShort(project.startDate)} - ${formatDateShort(project.endDate)}`, 20, yPos);
-  yPos += 12;
+  doc.setTextColor(100, 100, 100);
+  doc.text(project.partner, 105, yPos, { align: 'center' });
+  yPos += 15;
+  
+  // Project Info Box
+  doc.setFillColor(248, 249, 250);
+  doc.rect(15, yPos - 5, 180, 35, 'F');
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.3);
+  doc.rect(15, yPos - 5, 180, 35);
+  
+  // Project details in box
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  
+  // Two columns in the box
+  let infoY = yPos + 2;
+  
+  // Left column
+  doc.setFont('helvetica', 'bold');
+  doc.text('Status:', 25, infoY);
+  doc.setFont('helvetica', 'normal');
+  
+  // Status badge style
+  const statusText = getStatusLabel(project.status);
+  const statusColors = {
+    'akan-datang': [108, 117, 125],
+    'ongoing': [0, 123, 255],
+    'retensi': [255, 193, 7],
+    'selesai': [40, 167, 69]
+  };
+  const statusColor = statusColors[project.status] || [108, 117, 125];
+  doc.setTextColor(...statusColor);
+  doc.text(statusText, 50, infoY);
+  doc.setTextColor(0, 0, 0);
+  
+  infoY += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Periode:', 25, infoY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${formatDateShort(project.startDate)} - ${formatDateShort(project.endDate)}`, 50, infoY);
+  
+  infoY += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Progress:', 25, infoY);
+  doc.setFont('helvetica', 'normal');
+  const progress = calculateProjectProgress(project);
+  doc.text(`${progress}%`, 50, infoY);
+  
+  // Right column
+  infoY = yPos + 2;
+  doc.setFont('helvetica', 'bold');
+  doc.text('No. SPK/MOU:', 110, infoY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(project.contractNumber || '-', 150, infoY);
+  
+  infoY += 8;
+  const daysLeft = calculateDaysLeft(project.endDate);
+  if (project.status === 'ongoing') {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Sisa Waktu:', 110, infoY);
+    doc.setFont('helvetica', 'normal');
+    if (daysLeft > 0) {
+      doc.text(`${daysLeft} hari`, 150, infoY);
+    } else if (daysLeft === 0) {
+      doc.setTextColor(255, 0, 0);
+      doc.text('Hari ini!', 150, infoY);
+      doc.setTextColor(0, 0, 0);
+    } else {
+      doc.setTextColor(255, 0, 0);
+      doc.text(`Terlambat ${Math.abs(daysLeft)} hari`, 150, infoY);
+      doc.setTextColor(0, 0, 0);
+    }
+  }
+  
+  yPos += 40;
   
   // Financial Summary
-  doc.setFontSize(12);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('RINGKASAN KEUANGAN', 20, yPos);
-  yPos += 8;
+  doc.text('RINGKASAN KEUANGAN', 105, yPos, { align: 'center' });
+  yPos += 12;
   
   // Calculate totals
   const totalValue = project.value * (1 + project.taxRate / 100);
@@ -159,7 +228,7 @@ export const generateProjectPDF = (project, transactions = []) => {
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const balance = income - expense;
   
-  // Financial details table
+  // Financial table
   const financialData = [
     ['Nilai Proyek', formatCurrency(project.value)],
     [`Pajak (${project.taxRate}%)`, formatCurrency(project.value * project.taxRate / 100)],
@@ -170,8 +239,7 @@ export const generateProjectPDF = (project, transactions = []) => {
     ['Saldo', formatCurrency(balance)],
     ['', ''],
     ['Terbayar', formatCurrency(project.paidAmount || 0)],
-    ['Sisa Pembayaran', formatCurrency(project.value - (project.paidAmount || 0))],
-    ['Progress', `${calculateProjectProgress(project)}%`]
+    ['Sisa Pembayaran', formatCurrency(project.value - (project.paidAmount || 0))]
   ];
   
   autoTable(doc, {
@@ -180,25 +248,36 @@ export const generateProjectPDF = (project, transactions = []) => {
     theme: 'plain',
     styles: {
       fontSize: 10,
-      cellPadding: 2
+      cellPadding: 3
     },
     columnStyles: {
-      0: { cellWidth: 60, fontStyle: 'normal' },
-      1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: 80, fontStyle: 'normal', halign: 'left' },
+      1: { cellWidth: 60, halign: 'right', fontStyle: 'bold' }
     },
-    margin: { left: 20 },
+    margin: { left: 35 },
+    tableWidth: 140,
     didParseCell: function(data) {
       // Make empty rows smaller
       if (data.row.raw[0] === '' && data.row.raw[1] === '') {
-        data.cell.styles.minCellHeight = 3;
+        data.cell.styles.minCellHeight = 2;
+      }
+      // Style total row
+      if (data.row.raw[0] === 'Total Nilai' || data.row.raw[0] === 'Saldo') {
+        data.cell.styles.fillColor = [240, 240, 240];
+        data.cell.styles.fontStyle = 'bold';
       }
     }
   });
   
-  yPos = doc.lastAutoTable.finalY + 10;
+  yPos = doc.lastAutoTable.finalY + 15;
   
   // Project Description
   if (project.description) {
+    if (yPos > 200) {
+      doc.addPage();
+      yPos = addHeader(doc, 'LAPORAN PROYEK (Lanjutan)', true);
+    }
+    
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text('DESKRIPSI PROYEK', 20, yPos);
@@ -215,23 +294,23 @@ export const generateProjectPDF = (project, transactions = []) => {
       doc.text(line, 20, yPos);
       yPos += 6;
     });
-    yPos += 5;
+    yPos += 10;
   }
   
   // Transaction Details
   if (transactions.length > 0) {
     // Check if need new page
-    if (yPos > 200) {
+    if (yPos > 180) {
       doc.addPage();
       yPos = addHeader(doc, 'LAPORAN PROYEK (Lanjutan)', true);
     }
     
-    doc.setFontSize(12);
+    doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('DETAIL TRANSAKSI', 20, yPos);
-    yPos += 10;
+    doc.text('DETAIL TRANSAKSI', 105, yPos, { align: 'center' });
+    yPos += 12;
     
-    // Prepare transaction data with shorter text
+    // Prepare transaction data
     const transactionData = transactions.map((t, index) => [
       (index + 1).toString(),
       formatDateShort(t.date),
@@ -240,6 +319,11 @@ export const generateProjectPDF = (project, transactions = []) => {
       t.description && t.description.length > 35 ? t.description.substring(0, 35) + '...' : (t.description || '-'),
       t.type === 'income' ? formatCurrency(t.amount) : `(${formatCurrency(t.amount)})`
     ]);
+    
+    // Add empty row before totals
+    if (transactionData.length > 0) {
+      transactionData.push(['', '', '', '', '', '']);
+    }
     
     // Add totals row
     transactionData.push([
@@ -260,23 +344,24 @@ export const generateProjectPDF = (project, transactions = []) => {
         fillColor: [41, 128, 185],
         textColor: 255,
         fontStyle: 'bold',
-        fontSize: 10
+        fontSize: 10,
+        halign: 'center'
       },
       styles: {
         fontSize: 9,
-        cellPadding: 3,
+        cellPadding: 4,
         overflow: 'linebreak'
       },
       columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 30 },
-        4: { cellWidth: 55 },
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 20, halign: 'center' },
+        3: { cellWidth: 30, halign: 'left' },
+        4: { cellWidth: 58, halign: 'left' },
         5: { cellWidth: 35, halign: 'right' }
       },
-      margin: { left: 20, right: 20 },
-      tableWidth: 'auto',
+      margin: { left: 15, right: 15 },
+      tableWidth: 180,
       showHead: 'firstPage',
       didDrawPage: function(data) {
         // Clear top area and add header for new pages
@@ -286,14 +371,30 @@ export const generateProjectPDF = (project, transactions = []) => {
           addHeader(doc, 'LAPORAN PROYEK (Lanjutan)', true);
         }
       },
-      // Style the total row
       willDrawCell: function(data) {
+        // Style the empty row
+        if (data.row.index === transactionData.length - 2 && transactionData.length > 1) {
+          data.cell.styles.fillColor = [255, 255, 255];
+          data.cell.styles.minCellHeight = 3;
+        }
+        // Style the total row
         if (data.row.index === transactionData.length - 1) {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fillColor = [240, 240, 240];
         }
       }
     });
+  } else {
+    // No transactions message
+    if (yPos > 220) {
+      doc.addPage();
+      yPos = addHeader(doc, 'LAPORAN PROYEK (Lanjutan)', true);
+    }
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150, 150, 150);
+    doc.text('Belum ada transaksi untuk proyek ini', 105, yPos, { align: 'center' });
   }
   
   // Add footer to all pages
@@ -315,16 +416,18 @@ export const generateProjectPDF = (project, transactions = []) => {
  */
 export const generateInvoice = (project, invoiceData = {}) => {
   const doc = new jsPDF();
-  let yPos = 20;
+  let yPos = 30;
   
   // Invoice Header
-  doc.setFontSize(24);
+  doc.setFontSize(28);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
   doc.text('INVOICE', 105, yPos, { align: 'center' });
-  yPos += 15;
+  yPos += 20;
   
-  // Company Info
+  // Company Info - Left Side
   doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
   doc.text(COMPANY_INFO.name, 20, yPos);
   yPos += 7;
   
@@ -332,41 +435,47 @@ export const generateInvoice = (project, invoiceData = {}) => {
   doc.setFont('helvetica', 'normal');
   doc.text(COMPANY_INFO.address, 20, yPos);
   yPos += 5;
-  doc.text(`${COMPANY_INFO.city}`, 20, yPos);
+  doc.text(COMPANY_INFO.city, 20, yPos);
   yPos += 5;
   doc.text(`${COMPANY_INFO.phone} | ${COMPANY_INFO.email}`, 20, yPos);
-  yPos += 10;
   
-  // Invoice Info
-  const invoiceNumber = invoiceData.number || `INV-${project.id.slice(-6).toUpperCase()}-${new Date().getTime()}`;
+  // Invoice Info - Right Side
+  const invoiceNumber = invoiceData.number || `INV-${project.id.slice(-6).toUpperCase()}-${new Date().getMonth() + 1}${new Date().getFullYear()}`;
   const invoiceDate = invoiceData.date || new Date();
   
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(`No. Invoice: ${invoiceNumber}`, 120, 35);
-  doc.text(`Tanggal: ${formatDate(invoiceDate)}`, 120, 42);
+  doc.text(`No. Invoice: ${invoiceNumber}`, 190, 55, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Tanggal: ${formatDateShort(invoiceDate)}`, 190, 62, { align: 'right' });
+  
+  yPos += 15;
   
   // Line separator
   doc.setLineWidth(0.5);
+  doc.setDrawColor(200, 200, 200);
   doc.line(20, yPos, 190, yPos);
   yPos += 10;
   
   // Bill To
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
   doc.text('Kepada:', 20, yPos);
-  yPos += 7;
+  yPos += 8;
   
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.text(project.partner, 20, yPos);
-  yPos += 20;
+  yPos += 25;
   
   // Invoice Items
   const items = [];
   
-  // Main project item
+  // Main project item - format description properly
+  const projectDescription = project.name.toUpperCase();
   items.push([
-    project.name,
+    projectDescription,
     '1',
     formatCurrency(project.value),
     formatCurrency(project.value)
@@ -377,6 +486,7 @@ export const generateInvoice = (project, invoiceData = {}) => {
   const taxAmount = project.value * project.taxRate / 100;
   const total = subtotal + taxAmount;
   
+  // Invoice table with better styling
   autoTable(doc, {
     startY: yPos,
     head: [['Deskripsi', 'Qty', 'Harga Satuan', 'Total']],
@@ -386,85 +496,124 @@ export const generateInvoice = (project, invoiceData = {}) => {
       fillColor: [41, 128, 185],
       textColor: 255,
       fontStyle: 'bold',
-      fontSize: 11
+      fontSize: 11,
+      halign: 'center'
     },
     styles: {
-      fontSize: 11,
-      cellPadding: 5
+      fontSize: 10,
+      cellPadding: 6,
+      lineWidth: 0.1,
+      lineColor: [200, 200, 200]
     },
     columnStyles: {
-      0: { cellWidth: 90 },
+      0: { cellWidth: 100, halign: 'left' },
       1: { cellWidth: 20, halign: 'center' },
-      2: { cellWidth: 40, halign: 'right' },
-      3: { cellWidth: 40, halign: 'right' }
+      2: { cellWidth: 35, halign: 'right' },
+      3: { cellWidth: 35, halign: 'right' }
     },
-    margin: { left: 20, right: 20 }
+    margin: { left: 10, right: 10 },
+    tableWidth: 190,
+    didDrawCell: function(data) {
+      // Make cells look cleaner
+      data.cell.styles.lineWidth = 0.1;
+    }
   });
   
-  yPos = doc.lastAutoTable.finalY + 10;
+  yPos = doc.lastAutoTable.finalY + 15;
   
-  // Totals
-  doc.setFontSize(11);
+  // Subtotal section with box
+  const boxStartY = yPos - 5;
+  const boxWidth = 80;
+  const boxX = 110;
+  
+  // Draw box for totals
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.1);
+  
+  // Subtotal
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text('Subtotal:', 130, yPos);
-  doc.text(formatCurrency(subtotal), 185, yPos, { align: 'right' });
-  yPos += 7;
+  doc.text('Subtotal:', boxX + 5, yPos);
+  doc.text(formatCurrency(subtotal), boxX + boxWidth - 5, yPos, { align: 'right' });
+  yPos += 8;
   
+  // Tax if applicable
   if (project.taxRate > 0) {
-    doc.text(`Pajak (${project.taxRate}%):`, 130, yPos);
-    doc.text(formatCurrency(taxAmount), 185, yPos, { align: 'right' });
-    yPos += 7;
+    doc.text(`Pajak (${project.taxRate}%):`, boxX + 5, yPos);
+    doc.text(formatCurrency(taxAmount), boxX + boxWidth - 5, yPos, { align: 'right' });
+    yPos += 8;
   }
   
-  // Total line
-  doc.setLineWidth(0.3);
-  doc.line(130, yPos - 2, 185, yPos - 2);
+  // Draw line before total
+  doc.setLineWidth(0.5);
+  doc.line(boxX, yPos - 3, boxX + boxWidth, yPos - 3);
+  yPos += 2;
   
+  // Total with highlight
+  doc.setFillColor(240, 240, 240);
+  doc.rect(boxX, yPos - 5, boxWidth, 10, 'F');
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL:', 130, yPos + 5);
-  doc.text(formatCurrency(total), 185, yPos + 5, { align: 'right' });
+  doc.text('TOTAL:', boxX + 5, yPos + 2);
+  doc.text(formatCurrency(total), boxX + boxWidth - 5, yPos + 2, { align: 'right' });
+  
+  // Draw box around totals
+  const boxHeight = yPos - boxStartY + 8;
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.1);
+  doc.rect(boxX, boxStartY, boxWidth, boxHeight);
+  
+  yPos += 20;
   
   // Payment Terms
-  yPos += 25;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text('Syarat Pembayaran:', 20, yPos);
-  yPos += 7;
+  yPos += 8;
   
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text('• Pembayaran dilakukan dalam 30 hari setelah tanggal invoice', 20, yPos);
+  doc.text('• Pembayaran dilakukan dalam 30 hari setelah tanggal invoice', 25, yPos);
   yPos += 6;
-  doc.text('• Transfer ke rekening yang tertera di bawah', 20, yPos);
+  doc.text('• Transfer ke rekening yang tertera di bawah', 25, yPos);
   
-  // Bank Information
-  yPos += 15;
+  // Bank Information in a box
+  yPos += 12;
+  doc.setFillColor(245, 245, 245);
+  doc.rect(20, yPos - 5, 170, 30, 'F');
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.1);
+  doc.rect(20, yPos - 5, 170, 30);
+  
   doc.setFont('helvetica', 'bold');
-  doc.text('Informasi Bank:', 20, yPos);
-  yPos += 7;
+  doc.text('Informasi Bank:', 25, yPos + 2);
+  yPos += 8;
   
   doc.setFont('helvetica', 'normal');
-  doc.text('Bank: [Nama Bank]', 20, yPos);
+  doc.text('Bank: [Nama Bank]', 25, yPos);
   yPos += 6;
-  doc.text('No. Rekening: [Nomor Rekening]', 20, yPos);
+  doc.text('No. Rekening: [Nomor Rekening]', 25, yPos);
   yPos += 6;
-  doc.text('Atas Nama: ' + COMPANY_INFO.name, 20, yPos);
+  doc.text('Atas Nama: ' + COMPANY_INFO.name, 25, yPos);
   
-  // Signature area
-  yPos = 220;
-  doc.text('Hormat kami,', 130, yPos);
+  // Signature area aligned to right
+  yPos = 230;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Hormat kami,', 140, yPos);
   yPos += 25;
-  doc.text('_____________________', 130, yPos);
+  doc.text('_____________________', 140, yPos);
   yPos += 6;
-  doc.text('[Nama Penandatangan]', 130, yPos);
+  doc.text('[Nama Penandatangan]', 140, yPos);
   yPos += 5;
-  doc.text('[Jabatan]', 130, yPos);
+  doc.setFont('helvetica', 'italic');
+  doc.text('[Jabatan]', 140, yPos);
   
   // Footer
   addFooter(doc, 1);
   
   // Save
-  doc.save(`Invoice_${project.name.replace(/\s+/g, '_')}_${invoiceNumber}.pdf`);
+  const fileName = `Invoice_${project.name.replace(/[^a-z0-9]/gi, '_')}_${invoiceNumber}.pdf`;
+  doc.save(fileName);
 };
 
 /**
@@ -475,59 +624,101 @@ export const generateInvoice = (project, invoiceData = {}) => {
  */
 export const generateFullReportPDF = (projects, transactions, stats) => {
   const doc = new jsPDF();
-  let yPos = addHeader(doc, 'LAPORAN KEUANGAN KESELURUHAN');
+  let yPos = addHeader(doc, 'LAPORAN KEUANGAN');
   
   // Report Period
   doc.setFontSize(11);
+  doc.setTextColor(100, 100, 100);
   doc.text(`Per tanggal: ${formatDate(new Date())}`, 105, yPos, { align: 'center' });
-  yPos += 15;
+  yPos += 20;
   
-  // Summary Statistics
+  // Summary Statistics Card
+  doc.setTextColor(0, 0, 0);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('RINGKASAN KEUANGAN', 20, yPos);
-  yPos += 10;
+  doc.text('RINGKASAN KEUANGAN', 105, yPos, { align: 'center' });
+  yPos += 15;
   
-  // Summary table
-  const summaryData = [
-    ['Total Proyek', stats.totalProjects.toString()],
-    ['Total Nilai Proyek', formatCurrency(stats.totalValue)],
-    ['Total Terbayar', formatCurrency(stats.totalPaid)],
-    ['Total Pajak', formatCurrency(stats.totalTax || 0)],
-    ['', ''],
-    ['Total Pemasukan', formatCurrency(stats.totalIncome)],
-    ['Total Pengeluaran', formatCurrency(stats.totalExpense)],
-    ['Keuntungan', formatCurrency(stats.totalProfit)],
-    ['Margin Keuntungan', `${stats.margin}%`]
-  ];
+  // Draw summary box
+  doc.setFillColor(248, 249, 250);
+  doc.rect(15, yPos - 5, 180, 65, 'F');
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.5);
+  doc.rect(15, yPos - 5, 180, 65);
   
-  autoTable(doc, {
-    startY: yPos,
-    body: summaryData,
-    theme: 'plain',
-    styles: {
-      fontSize: 11,
-      cellPadding: 3
-    },
-    columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' }
-    },
-    margin: { left: 20 },
-    didParseCell: function(data) {
-      if (data.row.raw[0] === '' && data.row.raw[1] === '') {
-        data.cell.styles.minCellHeight = 3;
-      }
-    }
-  });
+  // Summary data in two columns
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
   
-  yPos = doc.lastAutoTable.finalY + 15;
+  // Left column
+  let leftX = 25;
+  let rightX = 110;
+  let tempY = yPos + 5;
+  
+  // Total Projects
+  doc.setFont('helvetica', 'bold');
+  doc.text('Total Proyek:', leftX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(stats.totalProjects.toString() + ' proyek', leftX + 45, tempY);
+  tempY += 8;
+  
+  // Total Value
+  doc.setFont('helvetica', 'bold');
+  doc.text('Nilai Proyek:', leftX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalValue), leftX + 45, tempY);
+  tempY += 8;
+  
+  // Total Paid
+  doc.setFont('helvetica', 'bold');
+  doc.text('Terbayar:', leftX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalPaid), leftX + 45, tempY);
+  tempY += 8;
+  
+  // Total Tax
+  doc.setFont('helvetica', 'bold');
+  doc.text('Total Pajak:', leftX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalTax || 0), leftX + 45, tempY);
+  
+  // Right column
+  tempY = yPos + 5;
+  
+  // Total Income
+  doc.setFont('helvetica', 'bold');
+  doc.text('Pemasukan:', rightX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalIncome), rightX + 45, tempY);
+  tempY += 8;
+  
+  // Total Expense
+  doc.setFont('helvetica', 'bold');
+  doc.text('Pengeluaran:', rightX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalExpense), rightX + 45, tempY);
+  tempY += 8;
+  
+  // Profit
+  doc.setFont('helvetica', 'bold');
+  doc.text('Keuntungan:', rightX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatCurrency(stats.totalProfit), rightX + 45, tempY);
+  tempY += 8;
+  
+  // Margin
+  doc.setFont('helvetica', 'bold');
+  doc.text('Margin:', rightX, tempY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(stats.margin + '%', rightX + 45, tempY);
+  
+  yPos += 75;
   
   // Projects by Status
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('STATUS PROYEK', 20, yPos);
-  yPos += 10;
+  doc.text('STATUS PROYEK', 105, yPos, { align: 'center' });
+  yPos += 12;
   
   const statusData = Object.entries(stats.projectsByStatus).map(([status, data]) => [
     getStatusLabel(status),
@@ -544,24 +735,35 @@ export const generateFullReportPDF = (projects, transactions, stats) => {
       fillColor: [41, 128, 185],
       textColor: 255,
       fontStyle: 'bold',
-      fontSize: 11
+      fontSize: 11,
+      halign: 'center'
     },
     styles: {
-      fontSize: 11,
-      cellPadding: 4
+      fontSize: 10,
+      cellPadding: 5
     },
     columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 30, halign: 'center' },
-      2: { cellWidth: 60, halign: 'right' }
+      0: { cellWidth: 70, halign: 'left' },
+      1: { cellWidth: 40, halign: 'center' },
+      2: { cellWidth: 70, halign: 'right' }
     },
-    margin: { left: 20 }
+    margin: { left: 15, right: 15 },
+    tableWidth: 180
   });
   
-  // Project List - New Page
-  doc.addPage();
-  yPos = addHeader(doc, 'DAFTAR PROYEK', true);
+  // Check if need new page for project list
+  yPos = doc.lastAutoTable.finalY + 20;
+  if (yPos > 220) {
+    doc.addPage();
+    yPos = addHeader(doc, 'DAFTAR PROYEK', true);
+  } else {
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DAFTAR PROYEK', 105, yPos, { align: 'center' });
+    yPos += 12;
+  }
   
+  // Project list table
   const projectData = projects.map((p, index) => [
     (index + 1).toString(),
     p.name.length > 30 ? p.name.substring(0, 30) + '...' : p.name,
@@ -581,22 +783,25 @@ export const generateFullReportPDF = (projects, transactions, stats) => {
       fillColor: [41, 128, 185],
       textColor: 255,
       fontStyle: 'bold',
-      fontSize: 10
+      fontSize: 9,
+      halign: 'center'
     },
     styles: {
-      fontSize: 9,
+      fontSize: 8,
       cellPadding: 3
     },
     columnStyles: {
       0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 50 },
-      2: { cellWidth: 35 },
-      3: { cellWidth: 20, halign: 'center' },
+      1: { cellWidth: 50, halign: 'left' },
+      2: { cellWidth: 35, halign: 'left' },
+      3: { cellWidth: 25, halign: 'center' },
       4: { cellWidth: 30, halign: 'right' },
       5: { cellWidth: 30, halign: 'right' },
-      6: { cellWidth: 20, halign: 'center' }
+      6: { cellWidth: 15, halign: 'center' }
     },
-    margin: { left: 20, right: 20 },
+    margin: { left: 7.5, right: 7.5 },
+    tableWidth: 195,
+    showHead: 'firstPage',
     didDrawPage: function(data) {
       if (data.pageNumber > 1) {
         doc.setFillColor(255, 255, 255);
@@ -623,20 +828,24 @@ export const generateFinancialReport = generateFullReportPDF;
 
 // New function for transaction report
 export const generateTransactionReport = (transactions, filters = {}) => {
-  const doc = new jsPDF('l'); // Landscape
+  // Use landscape for wide table
+  const doc = new jsPDF('l'); // Landscape orientation
   let yPos = addHeaderLandscape(doc, 'LAPORAN TRANSAKSI');
   
   // Filter info
   if (filters.dateRange) {
     doc.setFontSize(11);
+    doc.setTextColor(100, 100, 100);
     doc.text(
       `Periode: ${formatDate(filters.dateRange.start)} - ${formatDate(filters.dateRange.end)}`,
       148.5,
       yPos,
       { align: 'center' }
     );
-    yPos += 10;
+    yPos += 12;
   }
+  
+  doc.setTextColor(0, 0, 0);
   
   // Transaction table
   const tableData = transactions.map((t, index) => [
@@ -645,7 +854,7 @@ export const generateTransactionReport = (transactions, filters = {}) => {
     t.projectName && t.projectName.length > 30 ? t.projectName.substring(0, 30) + '...' : (t.projectName || '-'),
     t.type === 'income' ? 'Pemasukan' : 'Pengeluaran',
     t.category && t.category.length > 20 ? t.category.substring(0, 20) + '...' : (t.category || '-'),
-    t.description && t.description.length > 50 ? t.description.substring(0, 50) + '...' : (t.description || '-'),
+    t.description && t.description.length > 40 ? t.description.substring(0, 40) + '...' : (t.description || '-'),
     t.type === 'income' ? formatCurrency(t.amount) : `(${formatCurrency(t.amount)})`
   ]);
   
@@ -656,6 +865,11 @@ export const generateTransactionReport = (transactions, filters = {}) => {
   const totalExpense = transactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
+  
+  // Add empty row before totals
+  if (tableData.length > 0) {
+    tableData.push(['', '', '', '', '', '', '']);
+  }
   
   // Add totals row
   tableData.push([
@@ -668,6 +882,7 @@ export const generateTransactionReport = (transactions, filters = {}) => {
     formatCurrency(totalIncome - totalExpense)
   ]);
   
+  // Create table with proper centering
   autoTable(doc, {
     startY: yPos,
     head: [['No', 'Tanggal', 'Proyek', 'Jenis', 'Kategori', 'Deskripsi', 'Jumlah']],
@@ -677,22 +892,26 @@ export const generateTransactionReport = (transactions, filters = {}) => {
       fillColor: [41, 128, 185],
       textColor: 255,
       fontStyle: 'bold',
-      fontSize: 10
+      fontSize: 10,
+      halign: 'center'
     },
     styles: {
       fontSize: 9,
-      cellPadding: 3
+      cellPadding: 4,
+      overflow: 'linebreak'
     },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 50 },
-      3: { cellWidth: 25 },
-      4: { cellWidth: 35 },
-      5: { cellWidth: 90 },
+      0: { cellWidth: 12, halign: 'center' },
+      1: { cellWidth: 25, halign: 'center' },
+      2: { cellWidth: 55, halign: 'left' },
+      3: { cellWidth: 25, halign: 'center' },
+      4: { cellWidth: 35, halign: 'left' },
+      5: { cellWidth: 80, halign: 'left' },
       6: { cellWidth: 35, halign: 'right' }
     },
-    margin: { left: 20, right: 20 },
+    margin: { left: 15, right: 15 },
+    tableWidth: 267, // 297 - 30 (margins)
+    showHead: 'firstPage',
     didDrawPage: function(data) {
       if (data.pageNumber > 1) {
         doc.setFillColor(255, 255, 255);
@@ -701,27 +920,58 @@ export const generateTransactionReport = (transactions, filters = {}) => {
       }
     },
     willDrawCell: function(data) {
+      // Style the empty row
+      if (data.row.index === tableData.length - 2 && tableData.length > 1) {
+        data.cell.styles.fillColor = [255, 255, 255];
+        data.cell.styles.minCellHeight = 5;
+      }
+      // Style the total row
       if (data.row.index === tableData.length - 1) {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.fillColor = [240, 240, 240];
+        if (data.column.index === 5) {
+          data.cell.styles.halign = 'right';
+        }
       }
     }
   });
   
-  // Summary
-  yPos = doc.lastAutoTable.finalY + 10;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('Total Pemasukan:', 200, yPos);
-  doc.text(formatCurrency(totalIncome), 260, yPos, { align: 'right' });
-  yPos += 6;
-  doc.text('Total Pengeluaran:', 200, yPos);
-  doc.text(formatCurrency(totalExpense), 260, yPos, { align: 'right' });
-  yPos += 6;
+  // Summary box at bottom
+  yPos = doc.lastAutoTable.finalY + 15;
+  
+  // Check if need new page for summary
+  if (yPos > 180) {
+    doc.addPage();
+    yPos = 70;
+  }
+  
+  // Draw summary box
+  const summaryX = 180;
+  const boxWidth = 90;
+  
+  doc.setFillColor(248, 249, 250);
+  doc.rect(summaryX, yPos - 5, boxWidth, 35, 'F');
+  doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
-  doc.line(200, yPos - 2, 260, yPos - 2);
-  doc.text('Selisih:', 200, yPos + 3);
-  doc.text(formatCurrency(totalIncome - totalExpense), 260, yPos + 3, { align: 'right' });
+  doc.rect(summaryX, yPos - 5, boxWidth, 35);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Total Pemasukan:', summaryX + 5, yPos);
+  doc.text(formatCurrency(totalIncome), summaryX + boxWidth - 5, yPos, { align: 'right' });
+  yPos += 8;
+  
+  doc.text('Total Pengeluaran:', summaryX + 5, yPos);
+  doc.text(formatCurrency(totalExpense), summaryX + boxWidth - 5, yPos, { align: 'right' });
+  yPos += 8;
+  
+  doc.setLineWidth(0.5);
+  doc.line(summaryX + 5, yPos - 2, summaryX + boxWidth - 5, yPos - 2);
+  yPos += 5;
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text('Selisih:', summaryX + 5, yPos);
+  doc.text(formatCurrency(totalIncome - totalExpense), summaryX + boxWidth - 5, yPos, { align: 'right' });
   
   // Footer
   const pageCount = doc.internal.getNumberOfPages();
