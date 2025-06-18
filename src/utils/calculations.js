@@ -5,7 +5,7 @@ export const calculateProjectTotals = (projects) => {
     totals.count += 1;
     totals.value += project.value || 0;
     totals.paidAmount += project.paidAmount || 0;
-    totals.taxAmount += (project.value * project.taxRate / 0) || 0;
+    totals.taxAmount += (project.value * project.taxRate / 100) || 0; // Fixed: dibagi 100, bukan 0
     return totals;
   }, {
     count: 0,
@@ -37,7 +37,7 @@ export const calculateTransactionTotals = (transactions) => {
       return this.income - this.expense;
     },
     get margin() {
-      return this.income > 0 ? ((this.profit / this.income) * 0).toFixed(1) : 0;
+      return this.income > 0 ? ((this.profit / this.income) * 100).toFixed(1) : 0; // Fixed: dikali 100
     }
   });
 };
@@ -74,8 +74,8 @@ export const calculateMonthlyStats = (transactions) => {
   Object.keys(monthlyData).forEach(month => {
     monthlyData[month].balance = monthlyData[month].income - monthlyData[month].expense;
     monthlyData[month].profit = monthlyData[month].balance;
-    monthlyData[month].margin = monthlyData[month].income > 0 
-      ? ((monthlyData[month].profit / monthlyData[month].income) * 0).toFixed(1) 
+    monthlyData[month].margin = monthlyData[month].income > 0
+      ? ((monthlyData[month].profit / monthlyData[month].income) * 100).toFixed(1) // Fixed: dikali 100
       : 0;
   });
   
@@ -116,14 +116,14 @@ export const calculateProjectStats = (project, transactions) => {
   const income = projectTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
-    
+  
   const expense = projectTransactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   
-  const totalValue = project.value * (1 + project.taxRate / 0);
+  const totalValue = project.value * (1 + project.taxRate / 100); // Fixed: dibagi 100
   const remainingPayment = project.value - (project.paidAmount || 0);
-  const progress = project.value > 0 ? ((project.paidAmount || 0) / project.value * 0) : 0;
+  const progress = project.value > 0 ? ((project.paidAmount || 0) / project.value * 100) : 0; // Fixed: dikali 100
   
   return {
     income,
@@ -131,7 +131,7 @@ export const calculateProjectStats = (project, transactions) => {
     balance: income - expense,
     totalValue,
     remainingPayment,
-    progress: Math.min(Math.round(progress), 0),
+    progress: Math.min(Math.round(progress), 100), // Fixed: maksimum 100, bukan 0
     transactionCount: projectTransactions.length,
     incomeCount: projectTransactions.filter(t => t.type === 'income').length,
     expenseCount: projectTransactions.filter(t => t.type === 'expense').length
@@ -150,3 +150,6 @@ export const calculateDateRangeStats = (transactions, startDate, endDate) => {
   
   return calculateTransactionTotals(filteredTransactions);
 };
+
+// These functions are now in formatters.js to avoid duplication
+// Import them from formatters.js if needed in this file

@@ -1,11 +1,21 @@
 // src/components/projects/ProjectModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { addProject, updateProject } from '../../services/projects';
 import { PROJECT_STATUS, TAX_RATES } from '../../utils/constants';
 
 const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
   const isEdit = project !== null && project !== undefined;
   
+  // Helper function to format date for input fields
+  const formatDateForInput = (date) => {
+    if (!date) return '';
+    if (typeof date === 'string' && !date.includes('T')) {
+      return date; // Already in YYYY-MM-DD format
+    }
+    const dateObj = new Date(date);
+    return dateObj.toISOString().split('T')[0];
+  };
+
   const [formData, setFormData] = useState({
     name: project?.name || '',
     partner: project?.partner || '',
@@ -13,13 +23,31 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
     status: project?.status || PROJECT_STATUS.AKAN_DATANG,
     value: project?.value || '',
     taxRate: project?.taxRate !== undefined ? project.taxRate : 11,
-    startDate: project?.startDate || '',
-    endDate: project?.endDate || '',
+    startDate: formatDateForInput(project?.startDate) || '',
+    endDate: formatDateForInput(project?.endDate) || '',
     description: project?.description || ''
   });
   
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Update form when project prop changes
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        name: project?.name || '',
+        partner: project?.partner || '',
+        contractNumber: project?.contractNumber || '',
+        status: project?.status || PROJECT_STATUS.AKAN_DATANG,
+        value: project?.value || '',
+        taxRate: project?.taxRate !== undefined ? project.taxRate : 11,
+        startDate: formatDateForInput(project?.startDate) || '',
+        endDate: formatDateForInput(project?.endDate) || '',
+        description: project?.description || ''
+      });
+      setErrors({});
+    }
+  }, [isOpen, project]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -95,6 +123,28 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
       setErrors(prev => ({
         ...prev,
         [name]: ''
+      }));
+    }
+  };
+
+  // Format number with thousand separators for display
+  const formatNumberDisplay = (value) => {
+    if (!value) return '';
+    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  };
+
+  // Handle value input with better formatting
+  const handleValueChange = (e) => {
+    const rawValue = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    setFormData(prev => ({
+      ...prev,
+      value: rawValue
+    }));
+    
+    if (errors.value) {
+      setErrors(prev => ({
+        ...prev,
+        value: ''
       }));
     }
   };
@@ -192,12 +242,13 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
                 Nilai Proyek (Rp) <span className="text-red-500">*</span>
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 name="value"
-                value={formData.value}
-                onChange={handleChange}
-                min="0"
-                step="10100"
+                value={formatNumberDisplay(formData.value)}
+                onChange={handleValueChange}
+                placeholder="0"
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   errors.value ? 'border-red-500' : 'border-gray-300'
                 }`}

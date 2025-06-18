@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getAllProjects,
   getProject,
-  addProject,
+  addProject as addProjectService, // Renamed to avoid conflict
   updateProject,
   deleteProject,
   getProjectsByStatus,
@@ -18,7 +18,6 @@ export const useProjects = () => {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
     try {
       const projectList = await getAllProjects();
       setProjects(projectList);
@@ -37,7 +36,6 @@ export const useProjects = () => {
   const getProjectById = useCallback(async (projectId) => {
     setLoading(true);
     setError(null);
-    
     try {
       const project = await getProject(projectId);
       return project;
@@ -52,9 +50,8 @@ export const useProjects = () => {
   const addProject = useCallback(async (projectData, userId, userEmail) => {
     setLoading(true);
     setError(null);
-    
     try {
-      const projectId = await addProject(projectData, userId, userEmail);
+      const projectId = await addProjectService(projectData, userId, userEmail); // Fixed
       await loadProjects(); // Reload projects
       return projectId;
     } catch (error) {
@@ -68,7 +65,6 @@ export const useProjects = () => {
   const editProject = useCallback(async (projectId, projectData, userId, userEmail) => {
     setLoading(true);
     setError(null);
-    
     try {
       await updateProject(projectId, projectData, userId, userEmail);
       await loadProjects(); // Reload projects
@@ -83,7 +79,6 @@ export const useProjects = () => {
   const removeProject = useCallback(async (projectId) => {
     setLoading(true);
     setError(null);
-    
     try {
       await deleteProject(projectId);
       await loadProjects(); // Reload projects
@@ -112,7 +107,7 @@ export const useProjects = () => {
 
   const searchProjects = useCallback((searchTerm) => {
     const term = searchTerm.toLowerCase();
-    return projects.filter(project => 
+    return projects.filter(project =>
       project.name.toLowerCase().includes(term) ||
       project.partner.toLowerCase().includes(term) ||
       (project.contractNumber && project.contractNumber.toLowerCase().includes(term))
@@ -133,3 +128,4 @@ export const useProjects = () => {
     searchProjects
   };
 };
+

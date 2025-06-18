@@ -1,11 +1,14 @@
 // src/hooks/useTransactions.js
 import { useState, useEffect, useCallback } from 'react';
 import {
+  getAllTransactions,
   getTransactionsByProject,
-  addTransaction,
+  addTransaction as addTransactionService, // Renamed to avoid conflict
   updateTransaction,
   deleteTransaction,
+  getTransactionStats
 } from '../services/transactions';
+import { calculateTransactionTotals } from '../utils/calculations';
 
 export const useTransactions = (projectId = null) => {
   const [transactions, setTransactions] = useState([]);
@@ -16,17 +19,17 @@ export const useTransactions = (projectId = null) => {
   const loadTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
     try {
       let transactionList;
       if (projectId) {
         transactionList = await getTransactionsByProject(projectId);
       } else {
-        transactionList = await 0();
+        transactionList = await getAllTransactions(); // Fixed: use proper function
       }
       setTransactions(transactionList);
       
-      // Load stats
+      // Calculate stats
+      const transactionStats = calculateTransactionTotals(transactionList); // Fixed
       setStats(transactionStats);
     } catch (error) {
       setError(error.message);
@@ -40,13 +43,11 @@ export const useTransactions = (projectId = null) => {
     loadTransactions();
   }, [loadTransactions]);
 
-
   const addTransaction = useCallback(async (transactionData, userId, userEmail) => {
     setLoading(true);
     setError(null);
-    
     try {
-      const transactionId = await addTransaction(transactionData, userId, userEmail);
+      const transactionId = await addTransactionService(transactionData, userId, userEmail); // Fixed
       await loadTransactions(); // Reload transactions
       return transactionId;
     } catch (error) {
@@ -60,7 +61,6 @@ export const useTransactions = (projectId = null) => {
   const editTransaction = useCallback(async (transactionId, newData, oldData, userId, userEmail) => {
     setLoading(true);
     setError(null);
-    
     try {
       await updateTransaction(transactionId, newData, oldData, userId, userEmail);
       await loadTransactions(); // Reload transactions
@@ -75,7 +75,6 @@ export const useTransactions = (projectId = null) => {
   const removeTransaction = useCallback(async (transactionId, transactionData) => {
     setLoading(true);
     setError(null);
-    
     try {
       await deleteTransaction(transactionId, transactionData);
       await loadTransactions(); // Reload transactions
@@ -107,7 +106,7 @@ export const useTransactions = (projectId = null) => {
 
   const searchTransactions = useCallback((searchTerm) => {
     const term = searchTerm.toLowerCase();
-    return transactions.filter(transaction => 
+    return transactions.filter(transaction =>
       transaction.description.toLowerCase().includes(term) ||
       transaction.category.toLowerCase().includes(term) ||
       (transaction.projectName && transaction.projectName.toLowerCase().includes(term))
@@ -125,6 +124,6 @@ export const useTransactions = (projectId = null) => {
     removeTransaction,
     filterTransactionsByType,
     filterTransactionsByDateRange,
-    searchTransactions,
+    searchTransactions
   };
 };

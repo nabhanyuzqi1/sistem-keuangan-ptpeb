@@ -1,7 +1,7 @@
 // src/components/reports/Reports.jsx
 import React, { useState, useEffect } from 'react';
 import { getAllProjects } from '../../services/projects';
-import { getTransactionStats } from '../../services/transactions';
+import { getAllTransactions, calculateTransactionStats } from '../../services/transactions';
 import ReportCharts from './ReportCharts';
 import { formatCurrency, getStatusLabel, calculateProjectProgress } from '../../utils/formatters';
 import { PROJECT_STATUS } from '../../utils/constants';
@@ -34,7 +34,7 @@ const Reports = ({ currentUser }) => {
     try {
       const [projectList, transactionList] = await Promise.all([
         getAllProjects(),
-        0()
+        getAllTransactions() // Fixed: use proper function
       ]);
       
       setProjects(projectList);
@@ -55,6 +55,7 @@ const Reports = ({ currentUser }) => {
         const transDate = new Date(t.date);
         const start = new Date(dateRange.startDate);
         const end = new Date(dateRange.endDate);
+        end.setHours(23, 59, 59, 999);
         return transDate >= start && transDate <= end;
       });
     }
@@ -63,7 +64,7 @@ const Reports = ({ currentUser }) => {
     const totalProjects = projectList.length;
     const totalValue = projectList.reduce((sum, p) => sum + (p.value || 0), 0);
     const totalPaid = projectList.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
-    const totalTax = projectList.reduce((sum, p) => sum + (p.value * p.taxRate / 100), 0);
+    const totalTax = projectList.reduce((sum, p) => sum + ((p.value * p.taxRate / 100) || 0), 0); // Fixed calculation
     
     const totalIncome = filteredTransactions
       .filter(t => t.type === 'income')
@@ -78,7 +79,7 @@ const Reports = ({ currentUser }) => {
     Object.values(PROJECT_STATUS).forEach(status => {
       projectsByStatus[status] = {
         count: projectList.filter(p => p.status === status).length,
-        value: projectList.filter(p => p.status === status).reduce((sum, p) => sum + p.value, 0)
+        value: projectList.filter(p => p.status === status).reduce((sum, p) => sum + (p.value || 0), 0)
       };
     });
 
@@ -90,9 +91,9 @@ const Reports = ({ currentUser }) => {
         monthlyData[month] = { income: 0, expense: 0 };
       }
       if (t.type === 'income') {
-        monthlyData[month].income += t.amount;
+        monthlyData[month].income += t.amount || 0;
       } else {
-        monthlyData[month].expense += t.amount;
+        monthlyData[month].expense += t.amount || 0;
       }
     });
 
@@ -112,18 +113,18 @@ const Reports = ({ currentUser }) => {
 
   const handleDateRangeChange = (e) => {
     const { name, value } = e.target;
-    const newDateRange = { ...dateRange, [name]: value };
-    setDateRange(newDateRange);
-    
-    // Recalculate stats with new date range
-    if (newDateRange.startDate && newDateRange.endDate) {
+    setDateRange(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Recalculate when date range changes
+  useEffect(() => {
+    if (projects.length > 0 && transactions.length > 0) {
       calculateStats(projects, transactions);
     }
-  };
+  }, [dateRange]);
 
   const clearDateRange = () => {
     setDateRange({ startDate: '', endDate: '' });
-    calculateStats(projects, transactions);
   };
 
   if (loading) {
@@ -234,7 +235,7 @@ const Reports = ({ currentUser }) => {
       />
 
       {/* Project List Table */}
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg shadow mt-8">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-800">Daftar Semua Proyek</h3>
         </div>
@@ -263,41 +264,49 @@ const Reports = ({ currentUser }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {projects.map(project => {
-                const progress = calculateProjectProgress(project);
-                return (
-                  <tr key={project.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {project.name}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {project.partner}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`status-badge status-${project.status}`}>
-                        {getStatusLabel(project.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {formatCurrency(project.value)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                      {formatCurrency(project.paidAmount || 0)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center">
-                        <div className="w-24 bg-gray-200 rounded-full h-2 mr-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${progress}%` }}
-                          ></div>
+              {projects.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                    Belum ada data proyek
+                  </td>
+                </tr>
+              ) : (
+                projects.map(project => {
+                  const progress = calculateProjectProgress(project);
+                  return (
+                    <tr key={project.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        {project.name}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {project.partner}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`status-badge status-${project.status}`}>
+                          {getStatusLabel(project.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {formatCurrency(project.value)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                        {formatCurrency(project.paidAmount || 0)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center">
+                          <div className="w-24 bg-gray-200 rounded-full h-2 mr-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{ width: `${progress}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-gray-600">{progress}%</span>
                         </div>
-                        <span className="text-xs text-gray-600">{progress}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
