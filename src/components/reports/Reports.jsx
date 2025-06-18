@@ -1,10 +1,11 @@
 // src/components/reports/Reports.jsx
 import React, { useState, useEffect } from 'react';
 import { getAllProjects } from '../../services/projects';
-import { getAllTransactions, calculateTransactionStats } from '../../services/transactions';
+import { getAllTransactions } from '../../services/transactions';
 import ReportCharts from './ReportCharts';
 import { formatCurrency, getStatusLabel, calculateProjectProgress } from '../../utils/formatters';
 import { PROJECT_STATUS } from '../../utils/constants';
+import { generateFullReportPDF, generateTransactionReport } from '../../utils/pdfGenerator';
 
 const Reports = ({ currentUser }) => {
   const [projects, setProjects] = useState([]);
@@ -13,11 +14,13 @@ const Reports = ({ currentUser }) => {
     totalProjects: 0,
     totalValue: 0,
     totalPaid: 0,
+    totalTax: 0,
     totalIncome: 0,
     totalExpense: 0,
     totalProfit: 0,
     projectsByStatus: {},
-    monthlyData: {}
+    monthlyData: {},
+    margin: 0
   });
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState({
@@ -34,7 +37,7 @@ const Reports = ({ currentUser }) => {
     try {
       const [projectList, transactionList] = await Promise.all([
         getAllProjects(),
-        getAllTransactions() // Fixed: use proper function
+        getAllTransactions()
       ]);
       
       setProjects(projectList);
@@ -64,7 +67,7 @@ const Reports = ({ currentUser }) => {
     const totalProjects = projectList.length;
     const totalValue = projectList.reduce((sum, p) => sum + (p.value || 0), 0);
     const totalPaid = projectList.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
-    const totalTax = projectList.reduce((sum, p) => sum + ((p.value * p.taxRate / 100) || 0), 0); // Fixed calculation
+    const totalTax = projectList.reduce((sum, p) => sum + ((p.value * p.taxRate / 100) || 0), 0);
     
     const totalIncome = filteredTransactions
       .filter(t => t.type === 'income')
@@ -73,6 +76,9 @@ const Reports = ({ currentUser }) => {
     const totalExpense = filteredTransactions
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const totalProfit = totalIncome - totalExpense;
+    const margin = totalIncome > 0 ? ((totalProfit / totalIncome) * 100).toFixed(1) : 0;
 
     // Projects by status
     const projectsByStatus = {};
@@ -104,8 +110,8 @@ const Reports = ({ currentUser }) => {
       totalTax,
       totalIncome,
       totalExpense,
-      totalProfit: totalIncome - totalExpense,
-      margin: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome * 100).toFixed(1) : 0,
+      totalProfit,
+      margin,
       projectsByStatus,
       monthlyData
     });
@@ -127,6 +133,34 @@ const Reports = ({ currentUser }) => {
     setDateRange({ startDate: '', endDate: '' });
   };
 
+  // PDF Export Functions
+  const handleExportFinancialReport = () => {
+    generateFullReportPDF(projects, transactions, stats);
+  };
+
+  const handleExportTransactionReport = () => {
+    // Filter transactions based on date range if specified
+    let filteredTransactions = transactions;
+    if (dateRange.startDate && dateRange.endDate) {
+      filteredTransactions = transactions.filter(t => {
+        const transDate = new Date(t.date);
+        const start = new Date(dateRange.startDate);
+        const end = new Date(dateRange.endDate);
+        end.setHours(23, 59, 59, 999);
+        return transDate >= start && transDate <= end;
+      });
+    }
+    
+    const filters = dateRange.startDate && dateRange.endDate ? {
+      dateRange: {
+        start: dateRange.startDate,
+        end: dateRange.endDate
+      }
+    } : {};
+    
+    generateTransactionReport(filteredTransactions, filters);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -138,10 +172,35 @@ const Reports = ({ currentUser }) => {
   return (
     <div className="fade-in">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Laporan Keuangan</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold text-gray-800">Laporan Keuangan</h2>
+          
+          {/* Export Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleExportFinancialReport}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md text-sm transition-colors inline-flex items-center"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export PDF
+            </button>
+            
+            <button
+              onClick={handleExportTransactionReport}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm transition-colors inline-flex items-center"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export Transaksi
+            </button>
+          </div>
+        </div>
         
         {/* Date Range Filter */}
-        <div className="bg-white p-4 rounded-lg shadow mb-6">
+        <div className="bg-white p-4 rounded-lg shadow">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
