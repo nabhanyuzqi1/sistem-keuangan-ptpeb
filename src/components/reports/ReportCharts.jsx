@@ -54,7 +54,7 @@ const ReportCharts = ({ projects, transactions, monthlyData }) => {
   // Sort partners by value
   const sortedPartners = Object.entries(projectsByPartner)
     .sort((a, b) => b[1].value - a[1].value)
-    .slice(0, 10); // Top 10 partners
+    .slice(0, 0); // Top 10 partners
 
   // Prepare monthly trend data
   const months = Object.keys(monthlyData).sort();
@@ -95,7 +95,7 @@ const ReportCharts = ({ projects, transactions, monthlyData }) => {
         data: months.map(m => monthlyData[m].income),
         borderColor: CHART_COLORS.success,
         backgroundColor: CHART_COLORS.success + '20',
-        tension: 0.1,
+        tension: 0,
         fill: true
       },
       {
@@ -103,7 +103,7 @@ const ReportCharts = ({ projects, transactions, monthlyData }) => {
         data: months.map(m => monthlyData[m].expense),
         borderColor: CHART_COLORS.danger,
         backgroundColor: CHART_COLORS.danger + '20',
-        tension: 0.1,
+        tension: 0,
         fill: true
       }
     ]

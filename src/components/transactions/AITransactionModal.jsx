@@ -1,259 +1,238 @@
 // src/components/transactions/AITransactionModal.jsx
-import React, { useState, useEffect } from 'react';
-import { createTransaction } from '../../services/transactions';
-import { uploadTransactionImage } from '../../services/transactions';
-import { getAllProjects } from '../../services/projects';
-import { analyzeTransactionImage } from '../../services/ai';
-import { TRANSACTION_TYPES, INCOME_CATEGORIES, EXPENSE_CATEGORIES, MAX_FILE_SIZE, ALLOWED_IMAGE_TYPES } from '../../utils/constants';
+import React, { useState } from 'react';
+import { addTransaction } from '../../services/transactions';
+import { analyzeTransactionImage, validateImageFile } from '../../services/ai';
+import { formatDateTimeForInput } from '../../utils/formatters';
+import { TRANSACTION_TYPES, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../../utils/constants';
 
-const AITransactionModal = ({ isOpen, onClose, onSuccess, projects: providedProjects, currentUser }) => {
-  const [projects, setProjects] = useState(providedProjects || []);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [showResult, setShowResult] = useState(false);
+const AITransactionModal = ({ isOpen, onClose, onSuccess, projects, currentUser }) => {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
-  const [formData, setFormData] = useState({
-    projectId: '',
-    date: '',
-    type: TRANSACTION_TYPES.EXPENSE,
-    category: '',
-    amount: '',
-    description: '',
-    imageUrl: ''
-  });
-  
-  const [errors, setErrors] = useState({});
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [aiResult, setAiResult] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [editedData, setEditedData] = useState(null);
 
-  useEffect(() => {
-    if (!providedProjects) {
-      loadProjects();
-    }
-  }, [providedProjects]);
-
-  const loadProjects = async () => {
-    try {
-      const projectList = await getAllProjects();
-      setProjects(projectList);
-    } catch (error) {
-      console.error('Error loading projects:', error);
-    }
-  };
-
-  const handleImageChange = (e) => {
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file type
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      setError('Format file tidak didukung. Gunakan JPG, PNG, atau GIF.');
-      return;
+    try {
+      validateImageFile(file);
+      setSelectedFile(file);
+      setError('');
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPreviewUrl(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setError(err.message);
+      setSelectedFile(null);
+      setPreviewUrl(null);
     }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      setError('Ukuran file terlalu besar. Maksimal 10MB.');
-      return;
-    }
-
-    setError(null);
-    setImageFile(file);
-    
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleAnalyze = async () => {
-    if (!imageFile) {
+    if (!selectedFile) {
       setError('Pilih gambar terlebih dahulu');
       return;
     }
 
+    if (!selectedProjectId) {
+      setError('Pilih proyek terlebih dahulu');
+      return;
+    }
+
     setAnalyzing(true);
-    setError(null);
-    
+    setError('');
+
     try {
-      // Upload image first
-      const imageUrl = await uploadTransactionImage(imageFile);
+      const result = await analyzeTransactionImage(selectedFile, currentUser.uid);
+      console.log('Analysis complete:', result);
       
-      // Analyze with AI
-      const aiResult = await analyzeTransactionImage(imageFile);
-      
-      // Update form with AI results
-      setFormData({
-        ...aiResult,
-        projectId: projects.length > 0 ? projects[0].id : '',
-        imageUrl: imageUrl
+      setAiResult(result);
+      setEditedData({
+        ...result,
+        projectId: selectedProjectId
       });
-      
-      setShowResult(true);
-    } catch (error) {
-      console.error('Error analyzing image:', error);
-      setError('Gagal menganalisis gambar. Pastikan gambar berisi screenshot transaksi WhatsApp yang jelas.');
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setError(err.message || 'Gagal menganalisis gambar. Pastikan gambar jelas dan berisi informasi transaksi.');
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    
-    if (!formData.projectId) {
-      newErrors.projectId = 'Proyek harus dipilih';
-    }
-    
-    if (!formData.date) {
-      newErrors.date = 'Tanggal harus diisi';
-    }
-    
-    if (!formData.category) {
-      newErrors.category = 'Kategori harus dipilih';
-    }
-    
-    if (!formData.amount || formData.amount <= 0) {
-      newErrors.amount = 'Nominal harus lebih dari 0';
-    }
-    
-    if (!formData.description.trim()) {
-      newErrors.description = 'Keterangan harus diisi';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
+  const handleSubmit = async () => {
+    if (!editedData || !editedData.projectId) {
+      setError('Data tidak lengkap');
       return;
     }
-    
+
     setLoading(true);
-    
+    setError('');
+
     try {
-      const project = projects.find(p => p.id === formData.projectId);
+      const project = projects.find(p => p.id === editedData.projectId);
+      if (!project) {
+        throw new Error('Proyek tidak ditemukan');
+      }
+
       const transactionData = {
-        ...formData,
-        amount: parseFloat(formData.amount),
-        projectName: project?.name || '',
-        isAIProcessed: true
+        ...editedData,
+        projectId: editedData.projectId,
+        projectName: project.name,
+        date: editedData.date || new Date().toISOString(),
+        createdAt: new Date(),
+        createdBy: currentUser.uid,
+        isAIProcessed: true,
+        imageUrl: editedData.imageUrl,
+        imagePath: editedData.imagePath
       };
+
+      await addTransaction(transactionData);
+      console.log('Transaction saved successfully');
       
-      await createTransaction(transactionData, currentUser.uid, currentUser.email);
       onSuccess();
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      alert('Gagal menyimpan transaksi. Silakan coba lagi.');
+      handleClose();
+    } catch (err) {
+      console.error('Submit error:', err);
+      setError(err.message || 'Gagal menyimpan transaksi');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
+  const handleClose = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setAiResult(null);
+    setEditedData(null);
+    setError('');
+    setSelectedProjectId('');
+    onClose();
   };
-
-  const categories = formData.type === TRANSACTION_TYPES.INCOME ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">
-            Input Transaksi dengan AI
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-            disabled={loading || analyzing}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+  const categories = editedData?.type === TRANSACTION_TYPES.INCOME 
+    ? INCOME_CATEGORIES 
+    : EXPENSE_CATEGORIES;
 
-        {!showResult ? (
-          <div>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Upload Screenshot WhatsApp
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Input Transaksi dengan AI</h2>
+            <button
+              onClick={handleClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              {error}
+            </div>
+          )}
+
+          {/* Step 1: Project Selection */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3 flex items-center">
+              <span className="bg-purple-600 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm mr-2">1</span>
+              Pilih Proyek
+            </h3>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => {
+                setSelectedProjectId(e.target.value);
+                if (editedData) {
+                  setEditedData({ ...editedData, projectId: e.target.value });
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              required
+            >
+              <option value="">-- Pilih Proyek --</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>
+                  {project.name} - {project.partner}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 2: File Upload */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3 flex items-center">
+              <span className="bg-purple-600 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm mr-2">2</span>
+              Upload Screenshot
+            </h3>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="mt-2 text-sm text-gray-600">
+                  <span className="font-medium text-purple-600 hover:text-purple-500">
+                    Klik untuk upload
+                  </span> atau drag & drop
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  JPG, PNG, WebP hingga 5MB
+                </p>
               </label>
-              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                <div className="space-y-1 text-center">
-                  {imagePreview ? (
-                    <div className="mb-4">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="mx-auto max-h-64 rounded-lg"
-                      />
-                    </div>
-                  ) : (
-                    <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                      <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                  <div className="flex text-sm text-gray-600">
-                    <label htmlFor="imageUpload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500">
-                      <span>{imagePreview ? 'Ganti gambar' : 'Upload gambar'}</span>
-                      <input
-                        id="imageUpload"
-                        name="imageUpload"
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={handleImageChange}
-                        disabled={analyzing}
-                      />
-                    </label>
-                    <p className="pl-1">atau drag and drop</p>
-                  </div>
-                  <p className="text-xs text-gray-500">PNG, JPG, GIF hingga 10MB</p>
-                </div>
-              </div>
             </div>
 
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
-                {error}
+            {/* Preview */}
+            {previewUrl && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                <img 
+                  src={previewUrl} 
+                  alt="Preview" 
+                  className="max-w-full h-48 object-contain border rounded"
+                />
               </div>
             )}
+          </div>
 
-            <div className="flex justify-center">
+          {/* Step 3: Analyze Button */}
+          {selectedFile && selectedProjectId && !aiResult && (
+            <div className="mb-6">
               <button
                 onClick={handleAnalyze}
-                disabled={!imageFile || analyzing}
-                className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                disabled={analyzing}
+                className={`w-full px-4 py-3 rounded-md transition-colors flex items-center justify-center ${
+                  analyzing
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
               >
                 {analyzing ? (
                   <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    AI sedang memproses gambar...
+                    Menganalisis gambar dengan AI...
                   </>
                 ) : (
                   <>
@@ -265,181 +244,165 @@ const AITransactionModal = ({ isOpen, onClose, onSuccess, projects: providedProj
                 )}
               </button>
             </div>
-          </div>
-        ) : (
-          <div>
-            <h3 className="font-medium text-gray-800 mb-4">Hasil Analisis AI:</h3>
-            
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proyek <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="projectId"
-                    value={formData.projectId}
-                    onChange={handleChange}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.projectId ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={loading}
-                  >
-                    <option value="">Pilih Proyek</option>
-                    {projects.map(project => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} - {project.partner}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.projectId && <p className="text-red-500 text-xs mt-1">{errors.projectId}</p>}
-                </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tanggal <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.date ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={loading}
-                  />
-                  {errors.date && <p className="text-red-500 text-xs mt-1">{errors.date}</p>}
-                </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tipe Transaksi <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="type"
-                    value={formData.type}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loading}
-                  >
-                    <option value={TRANSACTION_TYPES.INCOME}>Pemasukan</option>
-                    <option value={TRANSACTION_TYPES.EXPENSE}>Pengeluaran</option>
-                  </select>
-                </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Kategori <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleChange}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.category ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={loading}
-                  >
-                    {categories.map(category => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
-                </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nominal (Rp) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    name="amount"
-                    value={formData.amount}
-                    onChange={handleChange}
-                    min="0"
-                    step="1000"
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.amount ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={loading}
-                  />
-                  {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
+          )}
+
+          {/* Step 4: AI Result and Edit Form */}
+          {aiResult && editedData && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold mb-3 flex items-center">
+                <span className="bg-purple-600 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm mr-2">3</span>
+                Verifikasi Hasil AI
+              </h3>
+
+              <div className="p-4 bg-purple-50 rounded-lg mb-4">
+                <p className="text-sm font-medium text-purple-800 mb-2">Hasil Analisis AI:</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-600">Tanggal:</span>
+                    <span className="ml-2 font-medium">{new Date(aiResult.date).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Nominal:</span>
+                    <span className="ml-2 font-medium">Rp {aiResult.amount.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Jenis:</span>
+                    <span className="ml-2 font-medium">{aiResult.type === 'income' ? 'Pemasukan' : 'Pengeluaran'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Kategori:</span>
+                    <span className="ml-2 font-medium">{aiResult.category}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-600">Deskripsi:</span>
+                    <span className="ml-2 font-medium">{aiResult.description}</span>
+                  </div>
                 </div>
               </div>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Keterangan <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  rows="3"
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.description ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  disabled={loading}
-                />
-                {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
+
+              <p className="text-sm text-gray-600 mb-4">
+                Periksa dan edit data jika diperlukan:
+              </p>
+
+              {/* Edit Form */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tanggal & Waktu
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={formatDateTimeForInput(editedData.date)}
+                      onChange={(e) => setEditedData({ ...editedData, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Jenis Transaksi
+                    </label>
+                    <select
+                      value={editedData.type}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        setEditedData({ 
+                          ...editedData, 
+                          type: newType,
+                          category: newType === TRANSACTION_TYPES.INCOME 
+                            ? INCOME_CATEGORIES[0] 
+                            : EXPENSE_CATEGORIES[0]
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value={TRANSACTION_TYPES.INCOME}>Pemasukan</option>
+                      <option value={TRANSACTION_TYPES.EXPENSE}>Pengeluaran</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Kategori
+                    </label>
+                    <select
+                      value={editedData.category}
+                      onChange={(e) => setEditedData({ ...editedData, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nominal (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      value={editedData.amount}
+                      onChange={(e) => setEditedData({ ...editedData, amount: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      min="0"
+                      step="10100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Deskripsi
+                  </label>
+                  <textarea
+                    value={editedData.description}
+                    onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    rows="3"
+                    placeholder="Deskripsi transaksi..."
+                  />
+                </div>
               </div>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Gambar Bukti
-                </label>
-                {imagePreview && (
-                  <img src={imagePreview} alt="Bukti transaksi" className="max-h-40 rounded-lg" />
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              Batal
+            </button>
+            {aiResult && (
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className={`px-4 py-2 rounded-md transition-colors ${
+                  loading
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Menyimpan...
+                  </span>
+                ) : (
+                  'Simpan Transaksi'
                 )}
-              </div>
-              
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResult(false);
-                    setFormData({
-                      projectId: '',
-                      date: '',
-                      type: TRANSACTION_TYPES.EXPENSE,
-                      category: '',
-                      amount: '',
-                      description: '',
-                      imageUrl: ''
-                    });
-                    setImageFile(null);
-                    setImagePreview(null);
-                    setErrors({});
-                  }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                  disabled={loading}
-                >
-                  Kembali
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Menyimpan...
-                    </>
-                  ) : (
-                    'Simpan Transaksi'
-                  )}
-                </button>
-              </div>
-            </form>
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

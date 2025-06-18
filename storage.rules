@@ -1,0 +1,17 @@
+// Firebase Storage Rules (set in Firebase Console)
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to upload transaction images
+    match /transactions/{userId}/{allPaths=**} {
+      allow read: if true;  // Public read for transaction images
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Default deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

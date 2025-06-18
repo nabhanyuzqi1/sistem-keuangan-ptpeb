@@ -1,13 +1,10 @@
 // src/hooks/useTransactions.js
 import { useState, useEffect, useCallback } from 'react';
 import {
-  getAllTransactions,
   getTransactionsByProject,
-  getRecentTransactions,
-  createTransaction,
+  addTransaction,
   updateTransaction,
   deleteTransaction,
-  getTransactionStats
 } from '../services/transactions';
 
 export const useTransactions = (projectId = null) => {
@@ -25,12 +22,11 @@ export const useTransactions = (projectId = null) => {
       if (projectId) {
         transactionList = await getTransactionsByProject(projectId);
       } else {
-        transactionList = await getAllTransactions();
+        transactionList = await 0();
       }
       setTransactions(transactionList);
       
       // Load stats
-      const transactionStats = await getTransactionStats(projectId);
       setStats(transactionStats);
     } catch (error) {
       setError(error.message);
@@ -44,27 +40,13 @@ export const useTransactions = (projectId = null) => {
     loadTransactions();
   }, [loadTransactions]);
 
-  const loadRecentTransactions = useCallback(async (limit = 10) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const recentList = await getRecentTransactions(limit);
-      return recentList;
-    } catch (error) {
-      setError(error.message);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const addTransaction = useCallback(async (transactionData, userId, userEmail) => {
     setLoading(true);
     setError(null);
     
     try {
-      const transactionId = await createTransaction(transactionData, userId, userEmail);
+      const transactionId = await addTransaction(transactionData, userId, userEmail);
       await loadTransactions(); // Reload transactions
       return transactionId;
     } catch (error) {
@@ -138,12 +120,11 @@ export const useTransactions = (projectId = null) => {
     loading,
     error,
     loadTransactions,
-    loadRecentTransactions,
     addTransaction,
     editTransaction,
     removeTransaction,
     filterTransactionsByType,
     filterTransactionsByDateRange,
-    searchTransactions
+    searchTransactions,
   };
 };

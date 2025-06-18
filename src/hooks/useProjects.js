@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getAllProjects,
   getProject,
-  createProject,
+  addProject,
   updateProject,
   deleteProject,
   getProjectsByStatus,
@@ -54,7 +54,7 @@ export const useProjects = () => {
     setError(null);
     
     try {
-      const projectId = await createProject(projectData, userId, userEmail);
+      const projectId = await addProject(projectData, userId, userEmail);
       await loadProjects(); // Reload projects
       return projectId;
     } catch (error) {

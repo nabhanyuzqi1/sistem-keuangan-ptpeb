@@ -207,7 +207,7 @@ const ProjectList = ({ currentUser }) => {
           </svg>
           <p className="mt-4 text-gray-500">
             {searchTerm || filter !== 'all'
-              ? 'Tidak ada proyek yang sesuai dengan filter'
+              ? 'Tidak nada proyek yang sesuai dengan filter'
               : 'Belum ada proyek'}
           </p>
           {isAdmin && !searchTerm && filter === 'all' && (

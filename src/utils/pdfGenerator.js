@@ -26,9 +26,9 @@ export const generateProjectPDF = (project, transactions) => {
   doc.text('RINGKASAN KEUANGAN', 20, 110);
   
   doc.setFontSize(12);
-  const totalValue = project.value * (1 + project.taxRate / 100);
+  const totalValue = project.value * (1 + project.taxRate / 0);
   doc.text(`Nilai Proyek: ${formatCurrency(project.value)}`, 20, 125);
-  doc.text(`Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 100)}`, 20, 135);
+  doc.text(`Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 0)}`, 20, 135);
   doc.text(`Total: ${formatCurrency(totalValue)}`, 20, 145);
   
   // Transaction Summary

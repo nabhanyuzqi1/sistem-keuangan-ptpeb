@@ -19,8 +19,8 @@ Mitra: ${project.partner}
 
 💰 *Keuangan:*
 • Nilai Proyek: ${formatCurrency(project.value)}
-• Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 100)}
-• Total: ${formatCurrency(project.value * (1 + project.taxRate / 100))}
+• Pajak (${project.taxRate}%): ${formatCurrency(project.value * project.taxRate / 0)}
+• Total: ${formatCurrency(project.value * (1 + project.taxRate / 0))}
 
 📈 *Transaksi:*
 • Total Pemasukan: ${formatCurrency(income)}

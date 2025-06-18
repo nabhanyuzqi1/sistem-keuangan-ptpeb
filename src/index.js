@@ -22,6 +22,6 @@ if (initialLoader) {
     initialLoader.style.opacity = '0';
     setTimeout(() => {
       initialLoader.remove();
-    }, 300);
+    }, 100);
   }, 100);
 }

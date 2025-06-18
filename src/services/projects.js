@@ -1,166 +1,330 @@
 // src/services/projects.js
-import {
-  collection,
-  doc,
-  getDocs,
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDocs, 
   getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
+  query, 
   orderBy,
-  serverTimestamp,
-  increment
+  where,
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-const COLLECTION_NAME = 'projects';
+// Collection reference
+const PROJECTS_COLLECTION = 'projects';
 
-// Get all projects
+/**
+ * Add a new project
+ * @param {Object} projectData - Project data object
+ * @returns {Promise<string>} - Document ID of created project
+ */
+export const addProject = async (projectData) => {
+  try {
+    console.log('Adding project:', projectData);
+    
+    // Validate required fields
+    if (!projectData.name || !projectData.partner || !projectData.value) {
+      throw new Error('Missing required fields: name, partner, or value');
+    }
+    
+    // Prepare data with timestamps
+    const dataToSave = {
+      ...projectData,
+      value: Number(projectData.value),
+      taxRate: Number(projectData.taxRate) || 11,
+      paidAmount: Number(projectData.paidAmount) || 0,
+      status: projectData.status || 'akan-datang',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+    
+    // Add to Firestore
+    const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), dataToSave);
+    console.log('Project created with ID:', docRef.id);
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding project:', error);
+    throw new Error(`Failed to add project: ${error.message}`);
+  }
+};
+
+/**
+ * Update an existing project
+ * @param {string} projectId - Project document ID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<void>}
+ */
+export const updateProject = async (projectId, updates) => {
+  try {
+    console.log('Updating project:', projectId, updates);
+    
+    const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+    
+    // Add updated timestamp
+    const dataToUpdate = {
+      ...updates,
+      updatedAt: Timestamp.now()
+    };
+    
+    // Ensure numeric fields are numbers
+    if (dataToUpdate.value !== undefined) {
+      dataToUpdate.value = Number(dataToUpdate.value);
+    }
+    if (dataToUpdate.taxRate !== undefined) {
+      dataToUpdate.taxRate = Number(dataToUpdate.taxRate);
+    }
+    if (dataToUpdate.paidAmount !== undefined) {
+      dataToUpdate.paidAmount = Number(dataToUpdate.paidAmount);
+    }
+    
+    await updateDoc(projectRef, dataToUpdate);
+    console.log('Project updated successfully');
+  } catch (error) {
+    console.error('Error updating project:', error);
+    throw new Error(`Failed to update project: ${error.message}`);
+  }
+};
+
+/**
+ * Delete a project and all its transactions
+ * @param {string} projectId - Project document ID
+ * @returns {Promise<void>}
+ */
+export const deleteProject = async (projectId) => {
+  try {
+    console.log('Deleting project:', projectId);
+    
+    // Get all transactions for this project
+    const transactionsQuery = query(
+      collection(db, 'transactions'),
+      where('projectId', '==', projectId)
+    );
+    const transactionSnapshot = await getDocs(transactionsQuery);
+    
+    // Use batch to delete project and its transactions
+    const batch = writeBatch(db);
+    
+    // Delete all related transactions
+    transactionSnapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    // Delete the project
+    batch.delete(doc(db, PROJECTS_COLLECTION, projectId));
+    
+    // Commit the batch
+    await batch.commit();
+    
+    console.log(`Project ${projectId} and ${transactionSnapshot.size} related transactions deleted`);
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    throw new Error(`Failed to delete project: ${error.message}`);
+  }
+};
+
+/**
+ * Get all projects
+ * @returns {Promise<Array>} - Array of project objects
+ */
 export const getAllProjects = async () => {
   try {
-    const projectsQuery = query(
-      collection(db, COLLECTION_NAME),
+    const q = query(
+      collection(db, PROJECTS_COLLECTION),
       orderBy('createdAt', 'desc')
     );
-    const snapshot = await getDocs(projectsQuery);
+    
+    const querySnapshot = await getDocs(q);
     const projects = [];
-    snapshot.forEach((doc) => {
+    
+    querySnapshot.forEach((doc) => {
       projects.push({
         id: doc.id,
         ...doc.data()
       });
     });
+    
+    console.log(`Retrieved ${projects.length} projects`);
     return projects;
   } catch (error) {
     console.error('Error getting projects:', error);
-    throw error;
+    throw new Error(`Failed to retrieve projects: ${error.message}`);
   }
 };
 
-// Get single project
-export const getProject = async (projectId) => {
+/**
+ * Get project by ID
+ * @param {string} projectId - Project document ID
+ * @returns {Promise<Object>} - Project object
+ */
+export const getProjectById = async (projectId) => {
   try {
-    const projectDoc = await getDoc(doc(db, COLLECTION_NAME, projectId));
-    if (projectDoc.exists()) {
+    const docRef = doc(db, PROJECTS_COLLECTION, projectId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
       return {
-        id: projectDoc.id,
-        ...projectDoc.data()
+        id: docSnap.id,
+        ...docSnap.data()
       };
     } else {
       throw new Error('Project not found');
     }
   } catch (error) {
-    console.error('Error getting project:', error);
-    throw error;
-  }
-};
-
-// Create project
-export const createProject = async (projectData, userId, userEmail) => {
-  try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      ...projectData,
-      paidAmount: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      userId,
-      userEmail
-    });
-    return docRef.id;
-  } catch (error) {
-    console.error('Error creating project:', error);
-    throw error;
-  }
-};
-
-// Update project
-export const updateProject = async (projectId, projectData, userId, userEmail) => {
-  try {
-    await updateDoc(doc(db, COLLECTION_NAME, projectId), {
-      ...projectData,
-      updatedAt: serverTimestamp(),
-      userId,
-      userEmail
-    });
-  } catch (error) {
-    console.error('Error updating project:', error);
-    throw error;
-  }
-};
-
-// Delete project
-export const deleteProject = async (projectId) => {
-  try {
-    await deleteDoc(doc(db, COLLECTION_NAME, projectId));
-  } catch (error) {
-    console.error('Error deleting project:', error);
-    throw error;
-  }
-};
-
-// Update project paid amount
-export const updateProjectPaidAmount = async (projectId, amount) => {
-  try {
-    await updateDoc(doc(db, COLLECTION_NAME, projectId), {
-      paidAmount: increment(amount),
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    console.error('Error updating project paid amount:', error);
-    throw error;
+    console.error('Error getting project by ID:', error);
+    throw new Error(`Failed to retrieve project: ${error.message}`);
   }
 };
 
 /**
- * Firestore composite index required for getProjectsByStatus query:
- * Fields: status (Ascending), createdAt (Descending)
- * Create index here:
- * https://console.firebase.google.com/v1/r/project/sistem-keuangan-ptpeb/firestore/indexes?create_composite=Clpwcm9qZWN0cy9zaXN0ZW0ta2V1YW5nYW4tcHRwZWIvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZGV4ZXMvXxABGg0KCXN0YXR1cxABGgkKCGNyZWF0ZWRBdBgC
+ * Get projects by status
+ * @param {string} status - Project status
+ * @returns {Promise<Array>} - Array of project objects
  */
 export const getProjectsByStatus = async (status) => {
   try {
-    const projectsQuery = query(
-      collection(db, COLLECTION_NAME),
+    const q = query(
+      collection(db, PROJECTS_COLLECTION),
       where('status', '==', status),
-      orderBy('createdAt', 'desc')
+      orderBy('startDate', 'desc')
     );
-    const snapshot = await getDocs(projectsQuery);
+    
+    const querySnapshot = await getDocs(q);
     const projects = [];
-    snapshot.forEach((doc) => {
+    
+    querySnapshot.forEach((doc) => {
       projects.push({
         id: doc.id,
         ...doc.data()
       });
     });
+    
+    console.log(`Retrieved ${projects.length} projects with status ${status}`);
     return projects;
   } catch (error) {
     console.error('Error getting projects by status:', error);
-    if (error.code === 'failed-precondition') {
-      console.error('Firestore index required for getProjectsByStatus query. Please create the index in Firebase console: https://console.firebase.google.com/v1/r/project/sistem-keuangan-ptpeb/firestore/indexes?create_composite=Clpwcm9qZWN0cy9zaXN0ZW0ta2V1YW5nYW4tcHRwZWIvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZGV4ZXMvXxABGg0KCXN0YXR1cxABGgkKCGNyZWF0ZWRBdBgC');
-    }
-    throw error;
+    throw new Error(`Failed to retrieve projects by status: ${error.message}`);
   }
 };
 
-// Get projects with upcoming deadlines
-export const getProjectsWithUpcomingDeadlines = async (daysAhead = 30) => {
+/**
+ * Calculate project statistics
+ * @param {Array} projects - Array of project objects
+ * @returns {Object} - Statistics object
+ */
+export const calculateProjectStats = (projects) => {
+  const stats = {
+    totalProjects: projects.length,
+    totalValue: 0,
+    totalPaid: 0,
+    totalRemaining: 0,
+    byStatus: {
+      'akan-datang': 0,
+      'ongoing': 0,
+      'retensi': 0,
+      'selesai': 0
+    },
+    averageValue: 0,
+    completionRate: 0
+  };
+  
+  projects.forEach(project => {
+    const value = Number(project.value) || 0;
+    const paid = Number(project.paidAmount) || 0;
+    
+    stats.totalValue += value;
+    stats.totalPaid += paid;
+    
+    // Count by status
+    if (stats.byStatus[project.status] !== undefined) {
+      stats.byStatus[project.status]++;
+    }
+  });
+  
+  stats.totalRemaining = stats.totalValue - stats.totalPaid;
+  stats.averageValue = stats.totalProjects > 0 ? stats.totalValue / stats.totalProjects : 0;
+  stats.completionRate = stats.totalValue > 0 ? (stats.totalPaid / stats.totalValue) * 100 : 0;
+  
+  return stats;
+};
+
+/**
+ * Update project status based on dates
+ * @param {string} projectId - Project ID
+ * @returns {Promise<void>}
+ */
+export const updateProjectStatus = async (projectId) => {
   try {
-    const projects = await getAllProjects();
+    const project = await getProjectById(projectId);
     const today = new Date();
-    const upcomingProjects = projects.filter(project => {
+    const startDate = new Date(project.startDate);
+    const endDate = new Date(project.endDate);
+    
+    let newStatus = project.status;
+    
+    if (today < startDate) {
+      newStatus = 'akan-datang';
+    } else if (today >= startDate && today <= endDate) {
+      newStatus = 'ongoing';
+    } else if (today > endDate && project.paidAmount < project.value) {
+      newStatus = 'retensi';
+    } else if (project.paidAmount >= project.value) {
+      newStatus = 'selesai';
+    }
+    
+    if (newStatus !== project.status) {
+      await updateProject(projectId, { status: newStatus });
+      console.log(`Project ${projectId} status updated to ${newStatus}`);
+    }
+  } catch (error) {
+    console.error('Error updating project status:', error);
+    // Don't throw error to prevent cascading failures
+  }
+};
+
+/**
+ * Get upcoming project deadlines
+ * @param {number} days - Number of days to look ahead
+ * @returns {Promise<Array>} - Array of projects nearing deadline
+ */
+export const getUpcomingDeadlines = async (days = 7) => {
+  try {
+    const today = new Date();
+    const futureDate = new Date();
+    futureDate.setDate(today.getDate() + days);
+    
+    const projects = await getAllProjects();
+    
+    const upcomingDeadlines = projects.filter(project => {
       if (project.status !== 'ongoing') return false;
       
       const endDate = new Date(project.endDate);
-      const daysUntilDeadline = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-      
-      return daysUntilDeadline > 0 && daysUntilDeadline <= daysAhead;
+      return endDate >= today && endDate <= futureDate;
     });
     
-    return upcomingProjects.sort((a, b) => new Date(a.endDate) - new Date(b.endDate));
+    return upcomingDeadlines.sort((a, b) => 
+      new Date(a.endDate) - new Date(b.endDate)
+    );
   } catch (error) {
-    console.error('Error getting upcoming projects:', error);
-    throw error;
+    console.error('Error getting upcoming deadlines:', error);
+    throw new Error(`Failed to retrieve upcoming deadlines: ${error.message}`);
   }
+};
+
+// Export all functions
+export default {
+  addProject,
+  updateProject,
+  deleteProject,
+  getAllProjects,
+  getProjectById,
+  getProjectsByStatus,
+  calculateProjectStats,
+  updateProjectStatus,
+  getUpcomingDeadlines
 };

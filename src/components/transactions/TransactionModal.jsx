@@ -1,6 +1,6 @@
 // src/components/transactions/TransactionModal.jsx
 import React, { useState, useEffect } from 'react';
-import { createTransaction, updateTransaction } from '../../services/transactions';
+import { addTransaction, updateTransaction } from '../../services/transactions';
 import { getAllProjects } from '../../services/projects';
 import { TRANSACTION_TYPES, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../../utils/constants';
 
@@ -93,13 +93,10 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction, projectId, 
       if (isEdit) {
         await updateTransaction(
           transaction.id,
-          transactionData,
-          transaction,
-          currentUser.uid,
-          currentUser.email
+          transactionData
         );
       } else {
-        await createTransaction(transactionData, currentUser.uid, currentUser.email);
+        await addTransaction(transactionData);
       }
       
       onSuccess();

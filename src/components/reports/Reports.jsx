@@ -1,7 +1,7 @@
 // src/components/reports/Reports.jsx
 import React, { useState, useEffect } from 'react';
 import { getAllProjects } from '../../services/projects';
-import { getAllTransactions, getTransactionStats } from '../../services/transactions';
+import { getTransactionStats } from '../../services/transactions';
 import ReportCharts from './ReportCharts';
 import { formatCurrency, getStatusLabel, calculateProjectProgress } from '../../utils/formatters';
 import { PROJECT_STATUS } from '../../utils/constants';
@@ -34,7 +34,7 @@ const Reports = ({ currentUser }) => {
     try {
       const [projectList, transactionList] = await Promise.all([
         getAllProjects(),
-        getAllTransactions()
+        0()
       ]);
       
       setProjects(projectList);

@@ -1,6 +1,6 @@
 // src/components/projects/ProjectModal.jsx
 import React, { useState } from 'react';
-import { createProject, updateProject } from '../../services/projects';
+import { addProject, updateProject } from '../../services/projects';
 import { PROJECT_STATUS, TAX_RATES } from '../../utils/constants';
 
 const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
@@ -71,7 +71,7 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
       if (isEdit) {
         await updateProject(project.id, projectData, currentUser.uid, currentUser.email);
       } else {
-        await createProject(projectData, currentUser.uid, currentUser.email);
+        await addProject(projectData, currentUser.uid, currentUser.email);
       }
       
       onSuccess();
@@ -197,7 +197,7 @@ const ProjectModal = ({ isOpen, onClose, onSuccess, project, currentUser }) => {
                 value={formData.value}
                 onChange={handleChange}
                 min="0"
-                step="1000"
+                step="10100"
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   errors.value ? 'border-red-500' : 'border-gray-300'
                 }`}
